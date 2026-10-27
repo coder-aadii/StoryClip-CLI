@@ -1,4 +1,35 @@
+# Local secrets and environment overrides
 .env
+.env.*
+!.env.example
+
+# Python environments and generated caches
 .venv/
-outputs/
+venv/
 __pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+
+# Generated StoryClip projects and media
+outputs/
+
+# Machine-specific tools and agent configuration
+.local-bin/
+.agents/
+.aws/
+.codex/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
