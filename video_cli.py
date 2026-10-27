@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import hashlib
+import io
 import json
 import math
 import os
@@ -12,8 +13,10 @@ import shutil
 import subprocess
 import sys
 import time
+import unicodedata
 import wave
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
@@ -22,9 +25,49 @@ load_dotenv()
 SESSION = requests.Session()
 SESSION.headers.update({'User-Agent': 'storyclip-cli/0.1'})
 
+INDIC_VOICES = ('Divya', 'Rohit', 'Aman', 'Rani')
+INDIC_LANGUAGES = {'hi', 'hin', 'hindi', 'hi-in'}
+INDIC_HEALTH_TIMEOUT = 5
+INDIC_SYNTH_TIMEOUT = 300
+TTS_CACHE_VERSION = 1
+
 
 def log(s):
     print(f'[storyclip] {s}', flush=True)
+
+
+def format_duration(seconds):
+    seconds = max(0, int(round(seconds)))
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f'{hours:d}h {minutes:02d}m {seconds:02d}s'
+    if minutes:
+        return f'{minutes:d}m {seconds:02d}s'
+    return f'{seconds:d}s'
+
+
+def progress_message(label, completed, total, started, now=None):
+    now = time.monotonic() if now is None else now
+    total = max(1, total)
+    completed = min(max(0, completed), total)
+    fraction = completed / total
+    width = 20
+    filled = round(width * fraction)
+    bar = '#' * filled + '-' * (width - filled)
+    elapsed = max(0, now - started)
+    if completed >= total:
+        timing = f'elapsed {format_duration(elapsed)}'
+    elif completed:
+        eta = elapsed / completed * (total - completed)
+        timing = f'ETA {format_duration(eta)}'
+    else:
+        timing = 'ETA calculating'
+    return f'{label} [{bar}] {fraction * 100:5.1f}% ({completed}/{total}) {timing}'
+
+
+def log_progress(label, completed, total, started):
+    log(progress_message(label, completed, total, started))
 
 
 def run(cmd):
@@ -72,11 +115,61 @@ def narrative_from_idea(idea, language, minutes):
             f'Approximate spoken length: {minutes} minutes (~{words} words, prioritize natural pacing). '
             'Write a complete plot with compelling sensory detail; satisfy the requested length without repetition. No time codes, no camera directions, no headings, no background-music directions in the narration. '
             'Do not invent factual claims presented as established truths; when fictional, make it clearly fiction. '
-            'Return JSON object with keys "title" (short text), "narration" (continuous spoken text), '
+            'Return JSON object with keys "title" (short text), "output_slug" (2-8 lowercase ASCII words '
+            'separated only by hyphens, suitable for a folder name), "narration" (continuous spoken text), '
             '"theme" (2-4 English words describing photo background), "music_moods" (array of 2 English keywords).')
     result=gemini_json(prompt)
     if not isinstance(result.get('narration'),str) or len(result['narration'])<30: raise ValueError('Gemini returned empty narration')
     return result
+
+
+def source_identity(kind, text, language, minutes=None, theme=None, music_mood=None):
+    normalized = re.sub(r'\s+', ' ', text.strip())
+    settings = {
+        'kind': kind,
+        'language': language,
+        'minutes': float(minutes) if kind == 'idea' else None,
+        'theme': theme or None,
+        'music_mood': music_mood or None,
+    }
+    serialized = json.dumps(
+        {'text': normalized, **settings}, ensure_ascii=False, sort_keys=True, separators=(',', ':')
+    ).encode('utf-8')
+    return {**settings, 'sha256': hashlib.sha256(serialized).hexdigest()}
+
+
+def safe_output_slug(suggested, fallback_seed):
+    normalized = unicodedata.normalize('NFKD', str(suggested or ''))
+    ascii_name = normalized.encode('ascii', 'ignore').decode('ascii').lower()
+    slug = re.sub(r'[^a-z0-9]+', '-', ascii_name).strip('-')[:64].rstrip('-')
+    if not slug:
+        digest = hashlib.sha256(fallback_seed.encode('utf-8')).hexdigest()[:10]
+        slug = f'story-{digest}'
+    return slug
+
+
+def find_matching_output(base, identity):
+    if not base.is_dir():
+        return None
+    for manifest in sorted(base.glob('*/project.json')):
+        try:
+            project = json.loads(manifest.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if project.get('source') == identity:
+            return manifest.parent
+    return None
+
+
+def available_output_path(base, slug):
+    candidate = base / slug
+    if not candidate.exists():
+        return candidate
+    for number in range(2, 10_000):
+        candidate = base / f'{slug}-{number}'
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f'Could not allocate an output directory for slug {slug!r}')
 
 
 def classify_mood(text):
@@ -172,9 +265,13 @@ def gather_images(scenes, theme, folder):
             except Exception as ex: log(f'Fallback photo failed: {ex}')
     if not fallbacks: raise RuntimeError('Pexels provided no downloadable theme fallback photos')
     used=set()
+    progress_started = time.monotonic()
     for i,sc in enumerate(scenes):
         dest=folder/f'scene_{i:04}.jpg'
-        if dest.exists(): sc['image']=str(dest);continue
+        if dest.exists():
+            sc['image']=str(dest)
+            log_progress('Images', i+1, len(scenes), progress_started)
+            continue
         photo=None
         try:
             matches=pexels_search(sc['query'],8)
@@ -191,6 +288,7 @@ def gather_images(scenes, theme, folder):
             fb=fallbacks[i%len(fallbacks)]
             shutil.copyfile(fb['path'],dest)
             sc['image']=str(dest);sc['credit']=fb['credit'];sc['pexels_url']=fb['pexels_url'];sc['fallback']=True
+        log_progress('Images', i+1, len(scenes), progress_started)
     return scenes
 
 
@@ -221,27 +319,197 @@ def gemini_speak(text, dest, language, mood='neutral'):
             f.setnchannels(1);f.setsampwidth(2);f.setframerate(24000);f.writeframes(data)
 
 
-def narrate(scenes, folder, language, provider):
+def validate_wav_bytes(data):
+    """Validate the raw WAV format returned by the local Indic service."""
+    if not isinstance(data, bytes) or len(data) < 44 or data[:4] != b'RIFF' or data[8:12] != b'WAVE':
+        raise RuntimeError('Indic Parler returned malformed audio: response is not a RIFF/WAVE file')
+    try:
+        with wave.open(io.BytesIO(data), 'rb') as wav:
+            if wav.getnchannels() < 1 or wav.getsampwidth() < 1 or wav.getframerate() < 1 or wav.getnframes() < 1:
+                raise RuntimeError('Indic Parler returned malformed audio: WAV has no playable frames')
+    except (EOFError, wave.Error) as ex:
+        raise RuntimeError(f'Indic Parler returned malformed audio: invalid WAV data ({ex})') from ex
+
+
+def validate_wav_file(path):
+    try:
+        with wave.open(str(path), 'rb') as wav:
+            return wav.getnchannels() >= 1 and wav.getsampwidth() >= 1 and wav.getframerate() >= 1 and wav.getnframes() >= 1
+    except (EOFError, OSError, wave.Error):
+        return False
+
+
+def response_error_detail(response):
+    try:
+        body = response.json()
+        if isinstance(body, dict) and body.get('detail'):
+            return str(body['detail'])
+    except (ValueError, requests.RequestException):
+        pass
+    text = getattr(response, 'text', '').strip()
+    return text[:500] if text else getattr(response, 'reason', 'unknown server error')
+
+
+def indic_parler_speak(text, dest, language, voice, base_url):
+    """Synthesize Hindi speech from the service's raw audio/wav response."""
+    narration = text.strip()
+    if not narration:
+        raise ValueError('Indic Parler narration text cannot be empty')
+    if len(narration) > 5000:
+        raise ValueError('Indic Parler narration text exceeds the service limit of 5000 characters')
+    if language.lower() not in INDIC_LANGUAGES:
+        raise ValueError('Indic Parler supports Hindi only (use --language hi)')
+    if voice not in INDIC_VOICES:
+        raise ValueError(f'Invalid Indic Parler voice {voice!r}; choose one of: {", ".join(INDIC_VOICES)}')
+
+    health_url = f"{base_url.rstrip('/')}/health"
+    try:
+        r = SESSION.get(health_url, timeout=INDIC_HEALTH_TIMEOUT)
+        r.raise_for_status()
+        health = r.json()
+        if not isinstance(health, dict) or health.get('status') != 'ok':
+            raise RuntimeError(f'Indic Parler health check returned an invalid response: {health!r}')
+    except requests.Timeout as ex:
+        raise RuntimeError(f'Indic Parler health check timed out after {INDIC_HEALTH_TIMEOUT}s: {ex}') from ex
+    except requests.RequestException as ex:
+        raise RuntimeError(f'Indic Parler health check failed: {ex}') from ex
+    except ValueError as ex:
+        raise RuntimeError(f'Indic Parler health check returned invalid JSON: {ex}') from ex
+
+    payload = {'text': narration, 'voice': voice, 'language': 'hi-IN'}
+    synth_url = f"{base_url.rstrip('/')}/synthesize"
+    try:
+        r = SESSION.post(synth_url, json=payload, timeout=INDIC_SYNTH_TIMEOUT)
+        r.raise_for_status()
+    except requests.Timeout as ex:
+        raise RuntimeError(f'Indic Parler synthesis request timed out after {INDIC_SYNTH_TIMEOUT}s: {ex}') from ex
+    except requests.HTTPError as ex:
+        response = ex.response if ex.response is not None else r
+        raise RuntimeError(f'Indic Parler synthesis failed (HTTP {response.status_code}): {response_error_detail(response)}') from ex
+    except requests.RequestException as ex:
+        raise RuntimeError(f'Indic Parler synthesis request failed: {ex}') from ex
+
+    content_type = r.headers.get('Content-Type', '').split(';', 1)[0].strip().lower()
+    if content_type != 'audio/wav':
+        raise RuntimeError(f'Indic Parler returned unexpected Content-Type {content_type or "<missing>"!r}; expected audio/wav')
+    validate_wav_bytes(r.content)
+
+    dest = Path(dest)
+    tmp = dest.with_name(dest.name + '.part')
+    try:
+        tmp.write_bytes(r.content)
+        os.replace(tmp, dest)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voice=None):
+    identity = {
+        'version': TTS_CACHE_VERSION,
+        'text': text,
+        'language': language,
+        'provider': provider,
+        'mood': mood,
+        'output': {'format': 'wav', 'sample_rate': 24000, 'channels': 1},
+    }
+    edge = {
+        'voice': 'hi-IN-SwaraNeural' if language == 'hi' else 'en-US-AriaNeural',
+        'rate': '-12%' if mood == 'horror' else '+0%' if mood == 'joy' else '-5%',
+    }
+    gemini = {
+        'model': os.getenv('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
+        'voice': 'Kore',
+        'delivery_prompt_version': 1,
+    }
+    if provider == 'indic-parler':
+        identity['settings'] = {'base_url': indic_url.rstrip('/'), 'voice': indic_voice, 'language': 'hi-IN'}
+    elif provider == 'edge':
+        identity['settings'] = edge
+    elif provider == 'gemini':
+        identity['settings'] = gemini
+    elif provider == 'auto':
+        identity['settings'] = {'fallback_order': ['gemini', 'edge'], 'gemini': gemini, 'edge': edge}
+    else:
+        raise ValueError(f'Unsupported TTS provider: {provider}')
+    return identity
+
+
+def cache_key(identity):
+    serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    return hashlib.sha256(serialized).hexdigest()
+
+
+def tts_cache_hit(wav, metadata, identity, key):
+    if not wav.is_file() or not metadata.is_file() or not validate_wav_file(wav):
+        return False
+    try:
+        saved = json.loads(metadata.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return False
+    return saved.get('cache_key') == key and saved.get('identity') == identity
+
+
+def write_json_atomic(path, obj):
+    tmp = path.with_name(path.name + '.part')
+    try:
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding='utf-8')
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None):
     folder.mkdir(parents=True,exist_ok=True)
     durations=[]
+    progress_started = time.monotonic()
     for i,sc in enumerate(scenes):
-        wav=folder/f'{i:04}.wav'
-        if not wav.exists():
-            raw=folder/f'{i:04}.source'
-            log(f'TTS scene {i+1}/{len(scenes)}')
-            if provider in ('gemini','auto'):
-                try:
-                    gemini_speak(sc['text'],wav,language,sc.get('mood','neutral'))
-                except Exception as ex:
-                    if provider=='gemini':raise
-                    log(f'Gemini TTS unavailable, using Edge: {ex}')
-            if not wav.exists():
-                mp3=folder/f'{i:04}.mp3'
-                asyncio.run(edge_speak(sc['text'],mp3,language,sc.get('mood','neutral')))
-                run(['ffmpeg','-y','-loglevel','error','-i',mp3,'-ar','24000','-ac','1',wav])
+        mood = sc.get('mood', 'neutral')
+        identity = tts_cache_identity(sc['text'], language, provider, mood, indic_url, indic_voice)
+        key = cache_key(identity)
+        wav = folder / f'{i:04}_{key[:20]}.wav'
+        metadata = wav.with_suffix('.json')
+        if not tts_cache_hit(wav, metadata, identity, key):
+            log(f'TTS scene {i+1}/{len(scenes)} using {provider}')
+            tmp_wav = wav.with_name(wav.stem + '.part.wav')
+            tmp_mp3 = wav.with_name(wav.stem + '.part.mp3')
+            resolved_provider = provider
+            try:
+                if provider == 'gemini':
+                    gemini_speak(sc['text'], tmp_wav, language, mood)
+                elif provider == 'auto':
+                    try:
+                        gemini_speak(sc['text'], tmp_wav, language, mood)
+                        resolved_provider = 'gemini'
+                    except Exception as ex:
+                        tmp_wav.unlink(missing_ok=True)
+                        resolved_provider = 'edge'
+                        log(f'Gemini TTS unavailable, falling back to Edge: {ex}')
+                        asyncio.run(edge_speak(sc['text'], tmp_mp3, language, mood))
+                        run(['ffmpeg','-y','-loglevel','error','-i',tmp_mp3,'-ar','24000','-ac','1',tmp_wav])
+                elif provider == 'edge':
+                    asyncio.run(edge_speak(sc['text'], tmp_mp3, language, mood))
+                    run(['ffmpeg','-y','-loglevel','error','-i',tmp_mp3,'-ar','24000','-ac','1',tmp_wav])
+                elif provider == 'indic-parler':
+                    # Explicit Indic selection is strict: failures propagate; no other provider is called.
+                    indic_parler_speak(sc['text'], tmp_wav, language, indic_voice, indic_url)
+                else:
+                    raise ValueError(f'Unsupported TTS provider: {provider}')
+
+                if not validate_wav_file(tmp_wav):
+                    raise RuntimeError(f'{resolved_provider} TTS produced an invalid or empty WAV file')
+                os.replace(tmp_wav, wav)
+                write_json_atomic(metadata, {
+                    'cache_key': key,
+                    'identity': identity,
+                    'resolved_provider': resolved_provider,
+                })
+            finally:
+                tmp_wav.unlink(missing_ok=True)
+                tmp_mp3.unlink(missing_ok=True)
         durations.append(audio_duration(wav))
         sc['voice']=str(wav)
         sc['duration']=durations[-1]
+        log_progress('Narration', i+1, len(scenes), progress_started)
     # concat PCM WAV files via ffmpeg concat demuxer
     manifest=folder/'narration_concat.txt'
     manifest.write_text(''.join("file '"+Path(sc['voice']).name+"'\n" for sc in scenes),encoding='utf-8')
@@ -317,13 +585,18 @@ def select_bgm(moods, folder, duration, approved):
 
 
 def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=0.12):
-    """Render a lightweight Ken Burns photo movie with theme grading and fades."""
+    """Render a lightweight Ken Burns photo movie with per-scene grading and fades."""
     clips = output_dir / 'clips'
     clips.mkdir(exist_ok=True)
     dur = [float(x['duration']) for x in scenes]
     fade = min(0.45, min(dur)/4) if len(dur) > 1 else 0
-    theme = style if style != 'auto' else classify_mood(' '.join(x.get('mood','') for x in scenes))
+    progress_started = time.monotonic()
     for i, sc in enumerate(scenes):
+        scene_style = style
+        if style == 'auto':
+            scene_style = sc.get('mood')
+            if scene_style not in ('horror', 'joy', 'neutral'):
+                scene_style = classify_mood(sc.get('text', ''))
         dest = clips / f'{i:04}.mp4'
         seconds = dur[i] + (fade if i < len(scenes)-1 else 0)
         frames = max(1, round(seconds*fps))
@@ -336,26 +609,29 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
                   f'd={frames}:s={width}x{height}:fps={fps}')
         else:
             vf = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}'
-        if theme == 'horror':
+        if scene_style == 'horror':
             vf += ',eq=brightness=-0.035:saturation=0.80,vignette=PI/4'
-        elif theme == 'joy':
+        elif scene_style == 'joy':
             vf += ',eq=brightness=0.018:saturation=1.23:contrast=1.04'
         vf += ',setsar=1,format=yuv420p'
         # Fingerprint inputs: rerenders on effects changes but preserves other usable assets.
         signature = hashlib.sha256(json.dumps([str(sc['image']),os.path.getmtime(sc['image']),seconds,fps,width,height,vf],sort_keys=True).encode()).hexdigest()
         stamp = dest.with_suffix('.sha256')
         if dest.exists() and stamp.exists() and stamp.read_text() == signature:
+            log_progress('Rendering', i+1, len(scenes), progress_started)
             continue
         log(f'Rendering motion image {i+1}/{len(scenes)}')
         run(['ffmpeg','-y','-loglevel','error','-loop','1','-framerate',str(fps),'-i',sc['image'],
              '-vf',vf,'-frames:v',str(frames),'-c:v','libx264','-preset','veryfast','-crf','23',
              '-pix_fmt','yuv420p',dest])
         stamp.write_text(signature)
+        log_progress('Rendering', i+1, len(scenes), progress_started)
     visual = output_dir / 'visual_only.mp4'
     files = [clips / f'{i:04}.mp4' for i in range(len(scenes))]
     if len(files) == 1:
         shutil.copyfile(files[0],visual)
     else:
+        log('Combining rendered scenes with crossfades')
         inputs = []
         for f in files: inputs.extend(['-i',f])
         parts = []
@@ -371,6 +647,7 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
              '-pix_fmt','yuv420p',visual])
     out = output_dir / 'final.mp4'
     total = sum(dur)
+    log('Muxing narration and optional music into final video')
     if music:
         # Loop a selected rights-cleared track. Multiple-track playlists need a separate
         # sequential normalisation step; do not misuse -stream_loop on concat demuxer.
@@ -390,43 +667,113 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
     return out
 
 
-def main():
+def build_parser():
     p=argparse.ArgumentParser(description='Idea/script -> Pexels photo video, TTS, optional Jamendo BGM, SRT')
     source=p.add_mutually_exclusive_group(required=True)
     source.add_argument('--idea',help='One-line idea')
     source.add_argument('--script',type=Path,help='Existing UTF-8 script file')
     p.add_argument('--language',choices=['hi','en'],default='hi')
     p.add_argument('--minutes',type=float,default=2,help='Approximate length for idea-to-script')
-    p.add_argument('--tts',choices=['edge','gemini','auto'],default='edge')
-    p.add_argument('--output',type=Path,default=Path('outputs/demo'))
+    p.add_argument('--tts',choices=['edge','gemini','auto','indic-parler'],default='edge')
+    p.add_argument('--indic-url',help='Base URL for Indic Parler TTS service',default=os.getenv('INDIC_PARLER_URL','http://127.0.0.1:8765'))
+    p.add_argument('--indic-voice',choices=INDIC_VOICES,help='Voice for Indic Parler TTS',default=os.getenv('INDIC_PARLER_VOICE','Divya'))
+    p.add_argument('--output',type=Path,help='Output directory (default: outputs/<story-name>)')
     p.add_argument('--theme',help='English Pexels theme search override')
     p.add_argument('--music-mood',help='Comma-separated Jamendo search moods')
     p.add_argument('--music-rights-confirmed',action='store_true',help='Require interactive affirmation of separately cleared synchronization/commercial rights')
     p.add_argument('--skip-music',action='store_true')
     p.add_argument('--dry-run',action='store_true',help='Stop after script, scenes and search queries are planned')
     p.add_argument('--fps',type=int,default=24)
-    p.add_argument('--style',choices=['auto','horror','joy','neutral'],default='auto')
+    p.add_argument('--style',choices=['auto','horror','joy','neutral'],default='auto',help='Visual grading: auto follows each scene mood; another value overrides every scene')
     p.add_argument('--no-zoom',action='store_true')
     p.add_argument('--bgm-file',type=Path,help='Local music file for which you have suitable video-sync rights')
     p.add_argument('--bgm-volume',type=float,default=0.12)
     p.add_argument('--duration-tolerance',type=float,default=0.07,help='Fractional tolerance for idea-generated videos')
+    return p
+
+
+def validate_cli_args(p, args):
+    if args.tts == 'indic-parler':
+        if args.indic_voice not in INDIC_VOICES:
+            p.error(f'--indic-voice must be one of: {", ".join(INDIC_VOICES)}')
+        parsed = urlparse(args.indic_url)
+        if parsed.scheme not in ('http', 'https') or not parsed.netloc or parsed.params or parsed.query or parsed.fragment:
+            p.error('--indic-url must be an http(s) base URL without query parameters or fragments')
+        if args.language != 'hi':
+            p.error('--tts indic-parler supports only --language hi')
+
+
+def main():
+    p = build_parser()
     args=p.parse_args()
+    validate_cli_args(p, args)
+
     if args.minutes<=0 or args.minutes>60: p.error('--minutes must be between 0 and 60')
     check_tools()
     if not 0 <= args.bgm_volume <= 1: p.error('--bgm-volume must be between 0 and 1')
     for key in ('GEMINI_API_KEY',):
         if not os.getenv(key):p.error(f'Missing {key} in .env')
     if not args.dry_run and not os.getenv('PEXELS_API_KEY'):p.error('Missing PEXELS_API_KEY in .env')
+
+    current_script = args.script.read_text(encoding='utf-8').strip() if args.script else None
+    identity = source_identity(
+        'idea' if args.idea else 'script',
+        args.idea if args.idea else current_script,
+        args.language,
+        args.minutes,
+        args.theme,
+        args.music_mood,
+    )
+    prepared_project = None
+    if args.output is None:
+        output_base = Path('outputs')
+        matching_output = find_matching_output(output_base, identity)
+        if matching_output:
+            args.output = matching_output
+            log(f'Automatically resuming matching project: {args.output}')
+        else:
+            if args.idea:
+                prepared_project = narrative_from_idea(args.idea,args.language,args.minutes)
+                suggested_slug = prepared_project.get('output_slug') or prepared_project.get('title')
+                fallback_seed = args.idea
+            else:
+                prepared_project = {
+                    'title': args.script.stem,
+                    'narration': current_script,
+                    'theme': args.theme or 'cinematic nature landscape',
+                    'music_moods': ['cinematic'],
+                }
+                suggested_slug = args.script.stem
+                fallback_seed = current_script
+            slug = safe_output_slug(suggested_slug, fallback_seed)
+            args.output = available_output_path(output_base, slug)
+            log(f'Automatic output directory: {args.output}')
+
     args.output.mkdir(parents=True,exist_ok=True)
     meta=args.output/'project.json'
     if meta.exists():
         project=json.loads(meta.read_text(encoding='utf-8'))
+        if project.get('language') != args.language:
+            raise RuntimeError(
+                f'Saved project language is {project.get("language")!r}, but --language is {args.language!r}; '
+                'use a new --output directory for a different language'
+            )
+        if args.script:
+            if current_script != project.get('narration', '').strip():
+                raise RuntimeError(
+                    'The script differs from the narration saved in project.json; use a new --output '
+                    'directory so the scene plan and media cannot be reused for stale text'
+                )
         log('Resuming saved project manifest')
     else:
-        if args.idea:project=narrative_from_idea(args.idea,args.language,args.minutes)
+        if prepared_project is not None:
+            project = prepared_project
+        elif args.idea:
+            project=narrative_from_idea(args.idea,args.language,args.minutes)
         else:
-            content=args.script.read_text(encoding='utf-8').strip()
-            project={'title':args.script.stem,'narration':content,'theme':args.theme or 'cinematic nature landscape','music_moods':['cinematic']}
+            project={'title':args.script.stem,'narration':current_script,'theme':args.theme or 'cinematic nature landscape','music_moods':['cinematic']}
+        project['source'] = identity
+        project['output_slug'] = args.output.name
         project['language']=args.language
         project['theme']=args.theme or project.get('theme') or 'cinematic landscape'
         project['music_moods']=[x.strip() for x in args.music_mood.split(',')] if args.music_mood else project.get('music_moods',['cinematic'])
@@ -437,7 +784,7 @@ def main():
         log(f'Dry run: {len(project["scenes"])} planned scenes in {meta}');return
     scenes=project['scenes']
     gather_images(scenes,project['theme'],args.output/'images');save_json(meta,project)
-    voice=narrate(scenes,args.output/'voice',project['language'],args.tts)
+    voice=narrate(scenes,args.output/'voice',project['language'],args.tts,args.indic_url,args.indic_voice)
     length=make_srt(scenes,args.output/'subtitles.srt');save_json(meta,project)
     if args.idea and project.get('narration') and length < 60*args.minutes*(1-args.duration_tolerance):
         # At most two continuations, avoiding endless retries and preserving old audio.
@@ -453,7 +800,7 @@ def main():
             save_json(meta,project)
             (args.output/'script.txt').write_text(project['narration'],encoding='utf-8')
             gather_images(scenes,project['theme'],args.output/'images')
-            voice=narrate(scenes,args.output/'voice',project['language'],args.tts)
+            voice=narrate(scenes,args.output/'voice',project['language'],args.tts,args.indic_url,args.indic_voice)
             length=make_srt(scenes,args.output/'subtitles.srt')
             save_json(meta,project)
             if length >= 60*args.minutes*(1-args.duration_tolerance): break
