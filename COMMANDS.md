@@ -4,13 +4,16 @@ source .venv/bin/activate
 export PATH="$PWD/.local-bin:$PATH"
 
 python video_cli.py \
-  --idea "एक डरावनी हवेली की कहानी।" \
+  --idea "मछलियों के बारे में रोचक तथ्य" \
   --language hi \
-  --minutes 5 \
-  --tts indic-parler \
-  --indic-voice Rani \
+  --minutes 30 \
+  --tts edge-male-energetic \
   --style auto \
+  --music-mood "nature,documentary" \
+  --output outputs/interesting-fish-facts-30min
 ```
+
+This uses the energetic Hindi male Edge voice and automatically selects the nature BGM. BGM is enabled by default. Use the TTS options in section 7 to change the voice/provider; valid values include `edge`, `edge-female`, `edge-femail`, `edge-male`, `edge-male-energetic`, `gemini`, `auto`, and Hindi-only `indic-parler` (voices: `Divya`, `Rohit`, `Aman`, `Rani`).
 
 # StoryClip CLI — Command Cheat Sheet
 
@@ -175,7 +178,9 @@ The verified service accepts Hindi only. Its voices are `Divya`, `Rohit`, `Aman`
 
 Use **either** `--idea` **or** `--script`, never both.
 
-## 5. Preview the plan without downloading media
+## 5. Generate the script without rendering a video
+
+Use `--dry-run` when you want Gemini to write the script but do not want to download images, synthesize narration, select music, or render a video:
 
 ```bash
 python video_cli.py \
@@ -184,13 +189,25 @@ python video_cli.py \
   --output outputs/castle_plan
 ```
 
+The generated script is saved to:
+
+```text
+outputs/castle_plan/script.txt
+```
+
+View or copy it with:
+
+```bash
+cat outputs/castle_plan/script.txt
+```
+
 Inspect planned scenes:
 
 ```bash
 python -m json.tool outputs/castle_plan/project.json | less
 ```
 
-**Important:** `--dry-run` still calls Gemini to generate/plan the story if no project exists; it skips photo downloads, narration, music, and rendering.
+**Important:** `--dry-run` is the script-only workflow for media generation, but it also asks Gemini to create the scene plan and search queries in `project.json`. It still requires `GEMINI_API_KEY` and FFmpeg/FFprobe checks for a new project; it skips photo downloads, narration, music, and rendering.
 
 ## 6. Control Pexels and music search keywords
 
@@ -203,16 +220,25 @@ python video_cli.py \
   --output outputs/forest_theme
 ```
 
-Search Jamendo with specific moods:
+Bundled theme-matched BGM is selected automatically and looped with a short crossfade. Its default volume is `0.08`; adjust it with `--bgm-volume` (range `0`–`1`). For example, use a slightly louder bed:
+
+```bash
+python video_cli.py \
+  --idea "A science documentary about black holes" --language en --minutes 2 \
+  --bgm-volume 0.10 \
+  --output outputs/black_holes
+```
+
+Use a local file if you have suitable video-sync rights:
 
 ```bash
 python video_cli.py \
   --idea "A scary abandoned mansion" --language en --minutes 2 \
-  --music-mood "horror,suspense,cinematic" \
+  --bgm-file storage/horror_theme_1.mp3 \
   --output outputs/mansion
 ```
 
-Skip Jamendo completely:
+Disable all background music (including bundled and custom tracks):
 
 ```bash
 python video_cli.py \
@@ -220,14 +246,17 @@ python video_cli.py \
   --skip-music --output outputs/festival
 ```
 
-**Music rights:** Jamendo results are *candidates only* by default. The CLI does **not** download/mix them unless you supply `--music-rights-confirmed` and explicitly acknowledge that you independently obtained the necessary synchronization/commercial rights. Do not use that flag solely because a track appears on Jamendo or is downloadable.
+Jamendo is optional. To use it, provide `--music-mood` and `--music-rights-confirmed`, then explicitly acknowledge that you independently obtained synchronization/commercial rights in the terminal. Search results and download permission alone do not establish video-sync rights. If no Jamendo track is approved or available, the bundled theme track is used.
 
 ## 7. Pick TTS provider, language, and frame rate
 
 | Option | Values | Meaning |
 |---|---|---|
 | `--language` | `hi`, `en` | Hindi or English |
-| `--tts` | `edge`, `gemini`, `auto`, `indic-parler` | Edge, Gemini, Gemini-with-Edge-fallback, or strict local Hindi Indic Parler |
+| `--tts` | `edge`, `edge-male`, `edge-male-energetic`, `edge-female`, `edge-femail`, `gemini`, `auto`, `indic-parler` | Female Edge (`edge`/`edge-female`/`edge-femail`), deep male Edge, energetic male Edge, Gemini, Gemini-with-female-Edge fallback, or strict local Hindi Indic Parler |
+| `--bgm-volume` | `0` to `1` | Bundled/custom background music volume; default `0.08` (low under narration) |
+| `--bgm-file` | Local audio path | Use a local music file for which you have suitable video-sync rights |
+| `--skip-music` | Flag | Disable all background music |
 | `--indic-url` | HTTP(S) base URL | Indic Parler endpoint (default `http://127.0.0.1:8765`) |
 | `--indic-voice` | `Divya`, `Rohit`, `Aman`, `Rani` | Indic Parler voice (default `Divya`) |
 | `--minutes` | positive number up to 60 | Target duration for *idea generation* |
@@ -235,6 +264,8 @@ python video_cli.py \
 | `--fps` | integer | Output frames per second (default 24) |
 | `--style` | `auto`, `horror`, `joy`, `neutral` | `auto` grades each scene from its mood; explicit values override the whole video |
 | `--no-zoom` | flag | Disable the default alternating zoom-in/zoom-out motion |
+
+`--tts edge-male` uses `hi-IN-MadhurNeural` for Hindi and `en-US-GuyNeural` for English, with pitch `-10Hz` and rate `+18%`. `--tts edge-male-energetic` uses the same voices with pitch `-2Hz` and rate `+35%`. `--tts edge-female` uses `hi-IN-SwaraNeural` for Hindi and `en-US-AriaNeural` for English, with pitch `-3Hz` and rate `+20%`. The requested `edge-femail` spelling and the existing `edge` value select the same female profile.
 
 Example (30 fps):
 
@@ -244,7 +275,7 @@ python video_cli.py --idea "A journey through space" --language en --minutes 2 -
 
 Output resolution is currently fixed to **1280×720 landscape**. There is no `--resolution` or `--render-only` flag in this version.
 
-With `--style auto`, styling is scene-specific and uses moods already stored in the scene plan; it does not make extra Gemini calls. Image motion remains independent: scenes alternate zoom-in and zoom-out unless `--no-zoom` is supplied.
+With `--style auto`, styling is scene-specific and uses moods already stored in the scene plan; it does not make extra Gemini calls. Image motion remains independent: scenes alternate smooth, centered zoom-in and zoom-out motion across each full scene unless `--no-zoom` is supplied.
 
 During long operations, the CLI prints per-stage progress and ETA, for example:
 
@@ -269,7 +300,7 @@ Existing `project.json` is reused; cached photo/audio/clip assets are reused whe
 
 For projects initially created without `--output`, repeating the same source options also locates and resumes the matching automatically named directory. This lookup is local and does not call Gemini again.
 
-Narration caching is configuration-aware. Text, language, provider, voice, mood, endpoint/model settings, and audio settings must all match, and the cached WAV must validate. Changing the Rani/Divya choice creates a new cache entry. If the input script changes, the CLI requires a new output folder instead of silently reusing the old project or audio.
+Narration caching is configuration-aware. Text, language, provider, voice, mood, endpoint/model settings, and audio settings must all match, and the cached WAV must validate. Changing the Rani/Divya choice creates a new cache entry. After each provider's cached WAV is loaded, the CLI derives a versioned WAV with sustained edge silence trimmed; interior pauses are preserved. Rerun the same command and output path to reprocess an existing project: valid TTS WAVs are reused, while scene durations, SRT timestamps, and visual transitions are recalculated. If the input script changes, the CLI requires a new output folder instead of silently reusing the old project or audio.
 
 For an entirely new script/plan, choose a **new** output folder:
 
@@ -339,7 +370,7 @@ ls video_cli.py
 
 **Video shorter than requested** — `--minutes` guides LLM script length; TTS duration determines actual video duration.
 
-**No BGM** — this is expected unless Jamendo access works **and** you independently have appropriate music rights and confirm them. `--skip-music` intentionally disables music.
+**No BGM** — check that the selected file exists under `storage/` and that the FFmpeg render completed. Theme-matched bundled BGM is used automatically; `--skip-music` disables it. Jamendo needs the optional client ID, `--music-rights-confirmed`, and the separate interactive rights acknowledgement.
 
 **Indic Parler connection error** — confirm the local service first:
 
@@ -365,3 +396,14 @@ python video_cli.py --idea "YOUR IDEA HERE" --language hi --minutes 2 --tts edge
 ```
 
 Omit `--output outputs/new_project` when you want automatic story-based naming. Keep an explicit unique output folder when you need a particular path.
+
+
+## 12. Edge TTS tuning reference
+
+The CLI's Hindi Edge configuration matches the `+15%` command below. The `+10%` command is retained as a slightly slower comparison:
+
+```bash
+edge-tts --voice "hi-IN-SwaraNeural" --pitch=-3Hz --rate=+10% --text "क्या आपने कभी सोचा है कि जिस दुनिया में आप रह रहे हैं, वह आपके अनुमान से कहीं ज्यादा रहस्यमयी और अजीब है? आज हम उन सच्चाइयों की यात्रा पर निकलेंगे जो आपको हैरान कर देंगी।" --write-media fact_ananya_fix.mp3
+
+edge-tts --voice "hi-IN-SwaraNeural" --pitch=-3Hz --rate=+15% --text "क्या आपने कभी सोचा है कि जिस दुनिया में आप रह रहे हैं, वह आपके अनुमान से कहीं ज्यादा रहस्यमयी और अजीब है? आज हम उन सच्चाइयों की यात्रा पर निकलेंगे जो आपको हैरान कर देंगी।" --write-media fact_ananya_fix_fater.mp3
+```
