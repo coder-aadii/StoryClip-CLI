@@ -2,6 +2,7 @@
 """Standalone terminal-only photo-video generator; explicit music-rights approval required."""
 import argparse
 import asyncio
+import array
 import hashlib
 import io
 import json
@@ -29,6 +30,40 @@ INDIC_VOICES = ('Divya', 'Rohit', 'Aman', 'Rani')
 INDIC_LANGUAGES = {'hi', 'hin', 'hindi', 'hi-in'}
 INDIC_HEALTH_TIMEOUT = 5
 INDIC_SYNTH_TIMEOUT = 300
+DEFAULT_BGM_VOLUME = 0.09
+BGM_LOOP_CROSSFADE_SECONDS = 1.0
+NARRATION_TRIM_VERSION = 1
+NARRATION_EDGE_PADDING_SECONDS = 0.09
+NARRATION_SILENCE_THRESHOLD_DBFS = -48.0
+NARRATION_SILENCE_WINDOW_SECONDS = 0.01
+BUILTIN_BGM_FILES = {
+    'science': 'science_explanation_theme_1.mp3',
+    'horror': 'horror_theme_1.mp3',
+    'mystery': 'mystery_theme_1.mp3',
+    'nature': 'nature_documentary_theme_1.mp3',
+    'technology': 'technology_theme_1.mp3',
+}
+BUILTIN_BGM_DIR = Path(__file__).resolve().parent / 'storage/BGM'
+EDGE_TTS_PROFILES = {
+    'female': {
+        'voices': {'hi': 'hi-IN-SwaraNeural', 'en': 'en-US-AriaNeural'},
+        'pitch': '-3Hz',
+        'rate': '+20%',
+    },
+    'male': {
+        'voices': {'hi': 'hi-IN-MadhurNeural', 'en': 'en-US-GuyNeural'},
+        'pitch': '-10Hz',
+        'rate': '+18%',
+    },
+    'male-energetic': {
+        'voices': {'hi': 'hi-IN-MadhurNeural', 'en': 'en-US-GuyNeural'},
+        'pitch': '-2Hz',
+        'rate': '+35%',
+    },
+}
+EDGE_TTS_PROVIDERS = (
+    'edge', 'edge-female', 'edge-femail', 'edge-male', 'edge-male-energetic',
+)
 TTS_CACHE_VERSION = 1
 
 
@@ -292,11 +327,26 @@ def gather_images(scenes, theme, folder):
     return scenes
 
 
-async def edge_speak(text, dest, language, mood='neutral'):
-    # Edge offers voice/rate control but not reliable acting/emotion instructions.
+def edge_tts_settings(language, provider='edge'):
+    if provider not in EDGE_TTS_PROVIDERS:
+        raise ValueError(f'Unsupported Edge TTS provider: {provider}')
+    profile_name = {
+        'edge-male': 'male',
+        'edge-male-energetic': 'male-energetic',
+    }.get(provider, 'female')
+    try:
+        profile = EDGE_TTS_PROFILES[profile_name]
+        voice = profile['voices'][language]
+    except KeyError as ex:
+        raise ValueError(f'Unsupported Edge TTS language: {language}') from ex
+    return {'voice': voice, 'pitch': profile['pitch'], 'rate': profile['rate']}
+
+
+async def edge_speak(text, dest, language, mood='neutral', provider='edge'):
+    # Edge offers voice/rate/pitch control but not reliable acting instructions.
     import edge_tts
-    voice='hi-IN-SwaraNeural' if language=='hi' else 'en-US-AriaNeural'
-    await edge_tts.Communicate(text,voice,rate=('-12%' if mood=='horror' else '+0%' if mood=='joy' else '-5%')).save(str(dest))
+    settings = edge_tts_settings(language, provider)
+    await edge_tts.Communicate(text, **settings).save(str(dest))
 
 
 def gemini_speak(text, dest, language, mood='neutral'):
@@ -412,10 +462,7 @@ def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voi
         'mood': mood,
         'output': {'format': 'wav', 'sample_rate': 24000, 'channels': 1},
     }
-    edge = {
-        'voice': 'hi-IN-SwaraNeural' if language == 'hi' else 'en-US-AriaNeural',
-        'rate': '-12%' if mood == 'horror' else '+0%' if mood == 'joy' else '-5%',
-    }
+    edge = edge_tts_settings(language)
     gemini = {
         'model': os.getenv('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
         'voice': 'Kore',
@@ -423,8 +470,8 @@ def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voi
     }
     if provider == 'indic-parler':
         identity['settings'] = {'base_url': indic_url.rstrip('/'), 'voice': indic_voice, 'language': 'hi-IN'}
-    elif provider == 'edge':
-        identity['settings'] = edge
+    elif provider in EDGE_TTS_PROVIDERS:
+        identity['settings'] = edge_tts_settings(language, provider)
     elif provider == 'gemini':
         identity['settings'] = gemini
     elif provider == 'auto':
@@ -447,6 +494,74 @@ def tts_cache_hit(wav, metadata, identity, key):
     except (OSError, ValueError):
         return False
     return saved.get('cache_key') == key and saved.get('identity') == identity
+
+
+def trim_wav_edge_silence(source, destination):
+    """Trim sustained silence at clip edges while preserving pauses inside speech."""
+    source = Path(source)
+    destination = Path(destination)
+    tmp = destination.with_name(destination.name + '.part')
+    try:
+        with wave.open(str(source), 'rb') as wav_in:
+            channels = wav_in.getnchannels()
+            sample_width = wav_in.getsampwidth()
+            sample_rate = wav_in.getframerate()
+            frame_count = wav_in.getnframes()
+            params = wav_in.getparams()
+            if wav_in.getcomptype() != 'NONE' or sample_width not in (1, 2, 3, 4):
+                raise RuntimeError(f'Unsupported narration WAV encoding in {source}')
+            pcm = wav_in.readframes(frame_count)
+
+        window_frames = max(1, round(sample_rate * NARRATION_SILENCE_WINDOW_SECONDS))
+        frame_width = channels * sample_width
+        max_amplitude = (1 << (sample_width * 8 - 1)) - 1
+        threshold = max_amplitude * (10 ** (NARRATION_SILENCE_THRESHOLD_DBFS / 20))
+        first_active = None
+        last_active = None
+        for block_start in range(0, frame_count, window_frames):
+            block_end = min(frame_count, block_start + window_frames)
+            byte_start = block_start * frame_width
+            byte_end = block_end * frame_width
+            block = pcm[byte_start:byte_end]
+            if sample_width == 1:
+                peak = max((abs(value - 128) for value in block), default=0)
+            elif sample_width in (2, 4):
+                samples = array.array('h' if sample_width == 2 else 'i')
+                samples.frombytes(block)
+                if sys.byteorder != 'little':
+                    samples.byteswap()
+                peak = max((abs(value) for value in samples), default=0)
+            else:
+                peak = 0
+                for offset in range(0, len(block), 3):
+                    value = int.from_bytes(block[offset:offset + 3], 'little', signed=True)
+                    peak = max(peak, abs(value))
+            if peak > threshold:
+                if first_active is None:
+                    first_active = block_start
+                last_active = block_end
+
+        padding = round(sample_rate * NARRATION_EDGE_PADDING_SECONDS)
+        if first_active is None:
+            start_frame, end_frame = 0, frame_count
+        else:
+            start_frame = max(0, first_active - padding)
+            end_frame = min(frame_count, last_active + padding)
+        trimmed_pcm = pcm[start_frame * frame_width:end_frame * frame_width]
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(tmp), 'wb') as wav_out:
+            wav_out.setnchannels(params.nchannels)
+            wav_out.setsampwidth(params.sampwidth)
+            wav_out.setframerate(params.framerate)
+            wav_out.setcomptype(params.comptype, params.compname)
+            wav_out.writeframes(trimmed_pcm)
+        if not validate_wav_file(tmp):
+            raise RuntimeError(f'Unable to prepare trimmed narration WAV: {destination}')
+        os.replace(tmp, destination)
+        return (frame_count - (end_frame - start_frame)) / sample_rate
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def write_json_atomic(path, obj):
@@ -486,8 +601,8 @@ def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None
                         log(f'Gemini TTS unavailable, falling back to Edge: {ex}')
                         asyncio.run(edge_speak(sc['text'], tmp_mp3, language, mood))
                         run(['ffmpeg','-y','-loglevel','error','-i',tmp_mp3,'-ar','24000','-ac','1',tmp_wav])
-                elif provider == 'edge':
-                    asyncio.run(edge_speak(sc['text'], tmp_mp3, language, mood))
+                elif provider in EDGE_TTS_PROVIDERS:
+                    asyncio.run(edge_speak(sc['text'], tmp_mp3, language, mood, provider))
                     run(['ffmpeg','-y','-loglevel','error','-i',tmp_mp3,'-ar','24000','-ac','1',tmp_wav])
                 elif provider == 'indic-parler':
                     # Explicit Indic selection is strict: failures propagate; no other provider is called.
@@ -506,8 +621,13 @@ def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None
             finally:
                 tmp_wav.unlink(missing_ok=True)
                 tmp_mp3.unlink(missing_ok=True)
-        durations.append(audio_duration(wav))
-        sc['voice']=str(wav)
+        trimmed_wav = wav.with_name(f'trim_v{NARRATION_TRIM_VERSION}_{wav.stem}.wav')
+        if not validate_wav_file(trimmed_wav):
+            removed = trim_wav_edge_silence(wav, trimmed_wav)
+            if removed >= 0.05:
+                log(f'Trimmed {removed:.2f}s of edge silence from narration scene {i+1}')
+        durations.append(audio_duration(trimmed_wav))
+        sc['voice']=str(trimmed_wav)
         sc['duration']=durations[-1]
         log_progress('Narration', i+1, len(scenes), progress_started)
     # concat PCM WAV files via ffmpeg concat demuxer
@@ -541,6 +661,29 @@ def jamendo_candidates(mood,limit=12):
     if data.get('headers',{}).get('status')!='success':
         raise RuntimeError(data.get('headers',{}).get('error_message','Jamendo search failed'))
     return data.get('results',[])
+
+
+def select_builtin_bgm(project):
+    """Select one licensed local music bed based on the whole-project metadata."""
+    context = ' '.join([
+        str(project.get('title', '')),
+        str(project.get('theme', '')),
+        ' '.join(str(mood) for mood in project.get('music_moods', [])),
+    ]).lower()
+    theme_keywords = (
+        ('horror', ('horror', 'haunted', 'ghost', 'witch', 'scary', 'fear', 'spooky', 'भूत', 'डर', 'चुड़ैल', 'हवेली', 'भयानक')),
+        ('science', ('science', 'scientific', 'space', 'black hole', 'astronomy', 'universe', 'cosmos', 'physics', 'biology', 'विज्ञान', 'वैज्ञानिक', 'अंतरिक्ष', 'ब्लैक होल', 'ब्रह्मांड', 'भौतिक')),
+        ('technology', ('technology', 'tech', 'digital', 'robot', 'computer', 'engineering', 'तकनीक', 'टेक्नोलॉजी', 'रोबोट', 'कंप्यूटर')),
+        ('nature', ('nature', 'wildlife', 'animal', 'forest', 'ocean', 'sea', 'landscape', 'प्रकृति', 'वन्यजीव', 'जानवर', 'जंगल', 'समुद्र', 'पृथ्वी')),
+        ('mystery', ('mystery', 'mysterious', 'suspense', 'detective', 'investigation', 'रहस्य', 'रहस्यमय', 'सस्पेंस', 'जासूस')),
+    )
+    genre = next((name for name, keywords in theme_keywords if any(word in context for word in keywords)), 'science')
+    path = BUILTIN_BGM_DIR / BUILTIN_BGM_FILES[genre]
+    if not path.is_file():
+        log(f'Built-in {genre} BGM is missing at {path}; rendering narration-only')
+        return None
+    log(f'Using built-in {genre} BGM: {path.name}')
+    return [{'path': str(path)}]
 
 
 def select_bgm(moods, folder, duration, approved):
@@ -584,7 +727,7 @@ def select_bgm(moods, folder, duration, approved):
     return chosen,tracks
 
 
-def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=0.12):
+def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME):
     """Render a lightweight Ken Burns photo movie with per-scene grading and fades."""
     clips = output_dir / 'clips'
     clips.mkdir(exist_ok=True)
@@ -600,11 +743,16 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
         dest = clips / f'{i:04}.mp4'
         seconds = dur[i] + (fade if i < len(scenes)-1 else 0)
         frames = max(1, round(seconds*fps))
-        # Zoompan produces frames from one high-resolution still; alternating directions.
+        # Oversampling keeps zoompan's integer crop coordinates from wobbling at output
+        # resolution. Ease across the full scene so motion never hits a zoom limit early.
         if zoom:
-            factor = 'min(zoom+0.00045,1.12)' if i % 2 == 0 else 'max(1.12-on*0.00045,1.0)'
-            vf = (f'scale={int(width*1.3)}:{int(height*1.3)}:force_original_aspect_ratio=increase,'
-                  f'crop={int(width*1.3)}:{int(height*1.3)},'
+            progress = f'(on/{frames-1})' if frames > 1 else '0'
+            eased = f'({progress}*{progress}*(3-2*{progress}))'
+            factor = f'1.0+0.12*{eased}' if i % 2 == 0 else f'1.12-0.12*{eased}'
+            motion_width = width * 4
+            motion_height = height * 4
+            vf = (f'scale={motion_width}:{motion_height}:force_original_aspect_ratio=increase,'
+                  f'crop={motion_width}:{motion_height},'
                   f'zoompan=z=\'{factor}\':x=\'iw/2-iw/zoom/2\':y=\'ih/2-ih/zoom/2\':'
                   f'd={frames}:s={width}x{height}:fps={fps}')
         else:
@@ -649,14 +797,30 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
     total = sum(dur)
     log('Muxing narration and optional music into final video')
     if music:
-        # Loop a selected rights-cleared track. Multiple-track playlists need a separate
-        # sequential normalisation step; do not misuse -stream_loop on concat demuxer.
         first = music[0]['path']
-        filtergraph = (f'[2:a]volume={bgm_volume},afade=t=in:st=0:d=1.5,'
-                       f'afade=t=out:st={max(0,total-2):.3f}:d=2[bg];'
-                       '[1:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]')
-        args = ['ffmpeg','-y','-loglevel','error','-i',visual,'-i',narration,
-                '-stream_loop','-1','-i',first,'-filter_complex',filtergraph,
+        track_duration = audio_duration(first)
+        loop_fade = min(BGM_LOOP_CROSSFADE_SECONDS, track_duration / 4)
+        copies = max(1, math.ceil((total - loop_fade) / (track_duration - loop_fade)))
+        inputs = ['-i', visual, '-i', narration]
+        inputs.extend(['-i', first] * copies)
+        filters = []
+        current = '2:a'
+        for copy_index in range(1, copies):
+            next_label = f'bgm_loop_{copy_index}'
+            filters.append(
+                f'[{current}][{copy_index + 2}:a]acrossfade=d={loop_fade:.3f}:c1=tri:c2=tri[{next_label}]'
+            )
+            current = next_label
+        fade_in = min(1.5, total / 4)
+        fade_out = min(2.0, total / 4)
+        fade_out_start = max(0, total - fade_out)
+        filters.append(
+            f'[{current}]atrim=duration={total:.3f},asetpts=PTS-STARTPTS,volume={bgm_volume},'
+            f'afade=t=in:st=0:d={fade_in:.3f},'
+            f'afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}[bg]'
+        )
+        filters.append('[1:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]')
+        args = ['ffmpeg','-y','-loglevel','error',*inputs,'-filter_complex',';'.join(filters),
                 '-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k',
                 '-t',f'{total:.3f}','-movflags','+faststart',out]
     else:
@@ -668,26 +832,27 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
 
 
 def build_parser():
-    p=argparse.ArgumentParser(description='Idea/script -> Pexels photo video, TTS, optional Jamendo BGM, SRT')
+    p=argparse.ArgumentParser(description='Idea/script -> Pexels photo video, TTS, background music, SRT')
     source=p.add_mutually_exclusive_group(required=True)
     source.add_argument('--idea',help='One-line idea')
     source.add_argument('--script',type=Path,help='Existing UTF-8 script file')
     p.add_argument('--language',choices=['hi','en'],default='hi')
     p.add_argument('--minutes',type=float,default=2,help='Approximate length for idea-to-script')
-    p.add_argument('--tts',choices=['edge','gemini','auto','indic-parler'],default='edge')
+    p.add_argument('--tts',choices=[*EDGE_TTS_PROVIDERS,'gemini','auto','indic-parler'],default='edge',
+                   help='Narrator: Edge female/male/energetic profile, Gemini, Gemini-to-Edge fallback, or Indic Parler')
     p.add_argument('--indic-url',help='Base URL for Indic Parler TTS service',default=os.getenv('INDIC_PARLER_URL','http://127.0.0.1:8765'))
     p.add_argument('--indic-voice',choices=INDIC_VOICES,help='Voice for Indic Parler TTS',default=os.getenv('INDIC_PARLER_VOICE','Divya'))
     p.add_argument('--output',type=Path,help='Output directory (default: outputs/<story-name>)')
     p.add_argument('--theme',help='English Pexels theme search override')
     p.add_argument('--music-mood',help='Comma-separated Jamendo search moods')
-    p.add_argument('--music-rights-confirmed',action='store_true',help='Require interactive affirmation of separately cleared synchronization/commercial rights')
+    p.add_argument('--music-rights-confirmed',action='store_true',help='Use Jamendo candidates only after separately clearing sync/commercial rights and confirming interactively')
     p.add_argument('--skip-music',action='store_true')
     p.add_argument('--dry-run',action='store_true',help='Stop after script, scenes and search queries are planned')
     p.add_argument('--fps',type=int,default=24)
     p.add_argument('--style',choices=['auto','horror','joy','neutral'],default='auto',help='Visual grading: auto follows each scene mood; another value overrides every scene')
     p.add_argument('--no-zoom',action='store_true')
     p.add_argument('--bgm-file',type=Path,help='Local music file for which you have suitable video-sync rights')
-    p.add_argument('--bgm-volume',type=float,default=0.12)
+    p.add_argument('--bgm-volume',type=float,default=DEFAULT_BGM_VOLUME,help='BGM linear volume from 0 to 1 (default: 0.08)')
     p.add_argument('--duration-tolerance',type=float,default=0.07,help='Fractional tolerance for idea-generated videos')
     return p
 
@@ -808,14 +973,19 @@ def main():
             log(f'WARNING: Actual {length:.1f}s is outside requested duration tolerance; no artificial slowdown applied.')
     log(f'Narration duration: {length:.1f}s; scenes: {len(scenes)}')
     music=None
-    if args.bgm_file:
+    if args.skip_music:
+        log('Background music disabled by --skip-music')
+    elif args.bgm_file:
         if not args.bgm_file.is_file(): p.error('--bgm-file does not exist')
         music=[{'path':str(args.bgm_file.resolve())}]
-    elif not args.skip_music:
-        if os.getenv('JAMENDO_CLIENT_ID'):
+    else:
+        if args.music_rights_confirmed and os.getenv('JAMENDO_CLIENT_ID'):
             try:music,candidates=select_bgm(project['music_moods'],args.output/'music',length,args.music_rights_confirmed)
-            except Exception as ex:log(f'Jamendo unavailable: {ex}; rendering narration-only')
-        else:log('No JAMENDO_CLIENT_ID; rendering narration-only')
+            except Exception as ex:log(f'Jamendo unavailable: {ex}; using built-in BGM')
+        elif args.music_rights_confirmed:
+            log('No JAMENDO_CLIENT_ID; using built-in BGM')
+        if not music:
+            music=select_builtin_bgm(project)
     movie=render(scenes,voice,music,args.output,args.fps,style=args.style,zoom=not args.no_zoom,bgm_volume=args.bgm_volume)
     log(f'VIDEO: {movie}\nSRT: {args.output / "subtitles.srt"}\nMANIFEST: {meta}')
 
