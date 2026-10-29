@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import array
+import errno
 import hashlib
 import io
 import json
@@ -16,6 +17,7 @@ import sys
 import time
 import unicodedata
 import wave
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -66,6 +68,7 @@ EDGE_TTS_PROVIDERS = (
     'edge', 'edge-female', 'edge-femail', 'edge-male', 'edge-male-energetic',
 )
 TTS_CACHE_VERSION = 1
+RENDER_FINGERPRINT_VERSION = 2
 PROJECT_FORMAT_VERSION = 2
 AVATAR_PLAN_VERSION = 4
 AVATAR_DIR = Path(__file__).resolve().parent / 'storage/Expression_Stickman'
@@ -1283,7 +1286,7 @@ def merge_scene_clips(clip_paths, durations, output_dir, fps, width, height, fad
     return output
 
 
-def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME):
+def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME, final_output=None):
     """Render scenes and composite in bounded, disk-backed FFmpeg jobs."""
     clips = output_dir / 'clips'
     clips.mkdir(exist_ok=True)
@@ -1299,17 +1302,20 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
         dest = clips / f'{i:04}.mp4'
         seconds = dur[i] + (fade if i < len(scenes)-1 else 0)
         frames = max(1, round(seconds*fps))
-        # Only overscan by the maximum zoom amount; 4x oversampling makes UHD needlessly costly.
+        # Perspective samples fractional positions each frame; zoompan rounds its moving crop.
         if zoom:
-            progress = f'(on/{frames-1})' if frames > 1 else '0'
+            progress = f'((in-1)/{frames-1})' if frames > 1 else '0'
             eased = f'({progress}*{progress}*(3-2*{progress}))'
             factor = f'1.0+{ZOOM_OVERSCAN - 1:.2f}*{eased}' if i % 2 == 0 else f'{ZOOM_OVERSCAN:.2f}-{ZOOM_OVERSCAN - 1:.2f}*{eased}'
-            motion_width = math.ceil(width * ZOOM_OVERSCAN / 2) * 2
-            motion_height = math.ceil(height * ZOOM_OVERSCAN / 2) * 2
-            vf = (f'scale={motion_width}:{motion_height}:force_original_aspect_ratio=increase,'
-                  f'crop={motion_width}:{motion_height},'
-                  f'format=yuv420p,zoompan=z=\'{factor}\':x=\'iw/2-iw/zoom/2\':y=\'ih/2-ih/zoom/2\':'
-                  f'd=1:s={width}x{height}:fps={fps}')
+            left = f'W/2-W/(2*({factor}))'
+            right = f'W/2+W/(2*({factor}))'
+            top = f'H/2-H/(2*({factor}))'
+            bottom = f'H/2+H/(2*({factor}))'
+            vf = (f'scale={width}:{height}:force_original_aspect_ratio=increase,'
+                  f'crop={width}:{height},format=yuv444p,'
+                  f"perspective=eval=frame:sense=source:interpolation=cubic:"
+                  f"x0='{left}':y0='{top}':x1='{right}':y1='{top}':"
+                  f"x2='{left}':y2='{bottom}':x3='{right}':y3='{bottom}'")
         else:
             vf = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}'
         if scene_style == 'horror':
@@ -1337,7 +1343,7 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
     save_json(output_dir / 'avatar_plan.json', avatar_plan)
     visual = merge_scene_clips(avatar_files, dur, output_dir, fps, width, height, fade,
                                resolution=next((name for name, size in VIDEO_RESOLUTIONS.items() if size == (width, height)), '720p'))
-    out = output_dir / 'final.mp4'
+    out = final_output if final_output is not None else output_dir / 'final.mp4'
     total = sum(dur)
     log('Muxing narration and optional music into final video')
     if music:
@@ -1375,6 +1381,119 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
     return out
 
 
+def requested_render_settings(args):
+    return {
+        'tts': args.tts,
+        'indic_voice': args.indic_voice if args.tts == 'indic-parler' else None,
+        'fps': args.fps,
+        'resolution': args.resolution,
+        'style': args.style,
+        'zoom': not args.no_zoom,
+        'bgm_volume': args.bgm_volume,
+        'bgm_file': str(args.bgm_file.resolve()) if args.bgm_file else None,
+        'skip_music': args.skip_music,
+        'music_rights_confirmed': args.music_rights_confirmed,
+        'duration_tolerance': args.duration_tolerance,
+    }
+
+
+def render_fingerprint(args):
+    settings = {
+        **requested_render_settings(args),
+        'version': RENDER_FINGERPRINT_VERSION,
+        'tts_identity': tts_cache_identity('', args.language, args.tts, 'neutral', args.indic_url, args.indic_voice),
+        'gemini_text_model': os.getenv('GEMINI_TEXT_MODEL', 'gemini-2.5-flash'),
+        'avatar_plan_version': AVATAR_PLAN_VERSION,
+        'narration_trim_version': NARRATION_TRIM_VERSION,
+    }
+    return cache_key(settings)
+
+
+def validate_final_video(path, expected_duration, width, height):
+    if not path.is_file() or path.stat().st_size == 0:
+        raise RuntimeError(f'Final mux produced no video at {path}; work files were retained for retry')
+    try:
+        probe = json.loads(run([
+            'ffprobe', '-v', 'error', '-show_entries',
+            'format=duration:stream=codec_type,width,height', '-of', 'json', path,
+        ]))
+        duration = float(probe['format']['duration'])
+        streams = probe['streams']
+        video = next((stream for stream in streams if stream.get('codec_type') == 'video'), None)
+        audio = next((stream for stream in streams if stream.get('codec_type') == 'audio'), None)
+    except (AttributeError, KeyError, TypeError, ValueError) as ex:
+        raise RuntimeError('FFprobe could not validate the final video; work files were retained for retry') from ex
+    if not video or not audio or (video.get('width'), video.get('height')) != (width, height):
+        raise RuntimeError('Final video is missing the expected video/audio streams or dimensions; work files were retained')
+    if not math.isfinite(duration) or duration <= 0 or abs(duration - expected_duration) > max(0.5, expected_duration * 0.001):
+        raise RuntimeError('Final video duration does not match narration; work files were retained for retry')
+    return duration
+
+
+MANAGED_ARTIFACTS = {
+    '.': re.compile(r'(?:script\.txt|video_script\.txt|avatar_plan\.json|visual_only\.(?:mp4|sha256)|final\.part\.mp4|project\.json\.part)'),
+    'images': re.compile(r'(?:fallback_[0-9]+|scene_[0-9a-f]{20})\.jpg'),
+    'voice': re.compile(r'(?:narration\.wav|narration_concat\.txt|[0-9]{4}_[0-9a-f]{20}\.(?:wav|json|part\.wav|part\.mp3|json\.part)|trim_v[0-9]+_[0-9]{4}_[0-9a-f]{20}\.wav(?:\.part)?)'),
+    'music': re.compile(r'(?:credits\.json|jamendo_[0-9]+\.mp3)'),
+    'clips': re.compile(r'[0-9]{4}\.(?:mp4|sha256|part\.mp4)'),
+    'clips/avatar': re.compile(r'[0-9]{4}\.(?:mp4|sha256|part\.mp4)'),
+    'clips/xfade': re.compile(r'pass-[0-9]{2}-[0-9]{4}\.(?:mp4|sha256|part\.mp4)'),
+}
+
+
+def cleanup_project_artifacts(output_dir, source, protected_paths=()):
+    root = output_dir.resolve()
+    unsafe = {
+        Path('/'), Path('/tmp').resolve(), Path.cwd().resolve(),
+        (Path(__file__).resolve().parent / 'outputs').resolve(),
+        *Path.cwd().resolve().parents,
+    }
+    if root in unsafe:
+        raise RuntimeError(f'Refusing cleanup of broad output directory: {root}')
+    manifest = root / 'project.json'
+    if manifest.is_symlink() or not manifest.is_file():
+        raise RuntimeError('Refusing cleanup without a regular project manifest')
+    saved = json.loads(manifest.read_text(encoding='utf-8'))
+    if saved.get('status') != 'cleaning' or saved.get('source') != source:
+        raise RuntimeError('Refusing cleanup because the project manifest is not in the expected cleaning state')
+    protected = {Path(path).resolve() for path in protected_paths if path is not None}
+    unknown = []
+    for relative in ('clips/xfade', 'clips/avatar', 'clips', 'images', 'voice', 'music', '.'):
+        folder = root / relative
+        if folder.is_symlink():
+            unknown.append(relative)
+            continue
+        if not folder.exists():
+            continue
+        if not folder.is_dir() or not folder.resolve().is_relative_to(root):
+            unknown.append(relative)
+            continue
+        for child in folder.iterdir():
+            child_relative = str(child.relative_to(root))
+            if relative == '.' and child.name in ('project.json', 'final.mp4', 'subtitles.srt'):
+                continue
+            if child.is_symlink():
+                unknown.append(child_relative)
+            elif child.is_dir():
+                if (relative == '.' and child.name in ('images', 'voice', 'music', 'clips')) or (
+                    relative == 'clips' and child.name in ('avatar', 'xfade')
+                ):
+                    continue
+                unknown.append(child_relative)
+            elif (MANAGED_ARTIFACTS[relative].fullmatch(child.name)
+                  and child.resolve().is_relative_to(root) and child.resolve() not in protected):
+                child.unlink()
+            else:
+                unknown.append(child_relative)
+        if relative != '.':
+            try:
+                folder.rmdir()
+            except OSError as ex:
+                if ex.errno not in (errno.ENOTEMPTY, errno.EEXIST):
+                    raise
+    return unknown
+
+
 def build_parser():
     p=argparse.ArgumentParser(description='Idea/script -> Pexels photo video, TTS, background music, SRT')
     source=p.add_mutually_exclusive_group(required=True)
@@ -1387,6 +1506,7 @@ def build_parser():
     p.add_argument('--indic-url',help='Base URL for Indic Parler TTS service',default=os.getenv('INDIC_PARLER_URL','http://127.0.0.1:8765'))
     p.add_argument('--indic-voice',choices=INDIC_VOICES,help='Voice for Indic Parler TTS',default=os.getenv('INDIC_PARLER_VOICE','Divya'))
     p.add_argument('--output',type=Path,help='Output directory (default: outputs/<story-name>)')
+    p.add_argument('--keep-intermediates',action='store_true',help='Retain generated scripts, media caches, and clips after a successful render')
     p.add_argument('--theme',help='English Pexels theme search override')
     p.add_argument('--music-mood',help='Comma-separated Jamendo search moods')
     p.add_argument('--music-rights-confirmed',action='store_true',help='Use Jamendo candidates only after separately clearing sync/commercial rights and confirming interactively')
@@ -1416,17 +1536,21 @@ def validate_cli_args(p, args):
             p.error('--tts indic-parler supports only --language hi')
 
 
+def require_pipeline_prerequisites(p, args):
+    check_tools()
+    if not os.getenv('GEMINI_API_KEY'):
+        p.error('Missing GEMINI_API_KEY in .env')
+    if not args.dry_run and not os.getenv('PEXELS_API_KEY'):
+        p.error('Missing PEXELS_API_KEY in .env')
+
+
 def main():
     p = build_parser()
     args=p.parse_args()
     validate_cli_args(p, args)
 
     if args.minutes<=0 or args.minutes>60: p.error('--minutes must be between 0 and 60')
-    check_tools()
     if not 0 <= args.bgm_volume <= 1: p.error('--bgm-volume must be between 0 and 1')
-    for key in ('GEMINI_API_KEY',):
-        if not os.getenv(key):p.error(f'Missing {key} in .env')
-    if not args.dry_run and not os.getenv('PEXELS_API_KEY'):p.error('Missing PEXELS_API_KEY in .env')
 
     current_script = args.script.read_text(encoding='utf-8').strip() if args.script else None
     identity = source_identity(
@@ -1438,6 +1562,7 @@ def main():
         args.music_mood,
         args.outro,
     )
+    requested_fingerprint = render_fingerprint(args)
     prepared_project = None
     if args.output is None:
         output_base = Path('outputs')
@@ -1447,6 +1572,7 @@ def main():
             log(f'Automatically resuming matching project: {args.output}')
         else:
             if args.idea:
+                require_pipeline_prerequisites(p, args)
                 prepared_project = narrative_from_idea(args.idea,args.language,args.minutes,args.outro)
                 suggested_slug = prepared_project.get('output_slug') or prepared_project.get('title')
                 fallback_seed = args.idea
@@ -1493,8 +1619,37 @@ def main():
                     'The script differs from the narration saved in project.json; use a new --output '
                     'directory so the scene plan and media cannot be reused for stale text'
                 )
+        if project.get('intermediates') not in (None, 'keep', 'delete_on_success'):
+            raise RuntimeError('Saved project has an unknown intermediate-retention policy')
+        if project.get('status') in ('cleaning', 'complete'):
+            if project['status'] == 'cleaning' and project.get('intermediates') != 'delete_on_success':
+                raise RuntimeError('Saved project has inconsistent cleanup state; no files were removed')
+            if project.get('render_fingerprint') != requested_fingerprint:
+                raise RuntimeError('Completed project settings differ from this command; use a new --output directory')
+            if args.keep_intermediates and project.get('intermediates') != 'keep':
+                raise RuntimeError('Intermediates were already removed; --keep-intermediates cannot restore them. Use a new --output directory')
+            movie = args.output / 'final.mp4'
+            subtitle = args.output / 'subtitles.srt'
+            if not movie.is_file() or movie.stat().st_size == 0 or not subtitle.is_file() or subtitle.stat().st_size == 0:
+                raise RuntimeError('Completed project is missing final.mp4 or subtitles.srt; use a new --output directory')
+            if project['status'] == 'cleaning':
+                unknown = cleanup_project_artifacts(args.output, identity, (args.script, args.bgm_file))
+                project['status'] = 'complete'
+                project['cleanup'] = {'status': 'done', 'additional_files': len(unknown)}
+                write_json_atomic(meta, project)
+                if unknown:
+                    log(f'Cleanup preserved {len(unknown)} additional files or directories')
+            log(f'Project already complete. VIDEO: {movie}\nSRT: {subtitle}\nMANIFEST: {meta}')
+            return
+        if project.get('status') not in (None, 'in_progress'):
+            raise RuntimeError('Saved project has an unknown lifecycle status; use a new --output directory')
+        require_pipeline_prerequisites(p, args)
+        project['status'] = 'in_progress'
+        project['intermediates'] = 'keep' if args.keep_intermediates else project.get('intermediates', 'delete_on_success')
+        write_json_atomic(meta, project)
         log('Resuming saved project manifest')
     else:
+        require_pipeline_prerequisites(p, args)
         if prepared_project is not None:
             project = prepared_project
         elif args.idea:
@@ -1503,6 +1658,8 @@ def main():
             project={'title':args.script.stem,'narration':current_script,'theme':args.theme or 'cinematic nature landscape','music_moods':['cinematic']}
         project['source'] = identity
         project['format_version'] = PROJECT_FORMAT_VERSION
+        project['status'] = 'in_progress'
+        project['intermediates'] = 'keep' if args.keep_intermediates else 'delete_on_success'
         project['outro_profile'] = args.outro
         project['output_slug'] = args.output.name
         project['language']=args.language
@@ -1517,17 +1674,17 @@ def main():
         project['video_narration'] = video_narration
         project['scenes'] = scenes
         project['avatar_plan'] = build_avatar_plan(project['scenes'])
-        save_json(meta,project)
+        write_json_atomic(meta,project)
         (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
         (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
     if args.dry_run:
         log(f'Dry run: {len(project["scenes"])} planned scenes with mandatory intro/outro and avatar states in {meta}');return
     scenes=project['scenes']
-    gather_images(scenes,project['theme'],args.output/'images');save_json(meta,project)
+    gather_images(scenes,project['theme'],args.output/'images');write_json_atomic(meta,project)
     voice=narrate(scenes,args.output/'voice',project['language'],args.tts,args.indic_url,args.indic_voice)
     length=make_srt(scenes,args.output/'subtitles.srt')
     project['avatar_plan'] = build_avatar_plan(scenes)
-    save_json(meta,project)
+    write_json_atomic(meta,project)
     content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
     bookend_length = sum(scene['duration'] for scene in scenes if scene.get('kind') != 'content')
     content_target = max(0, 60 * args.minutes - bookend_length)
@@ -1547,7 +1704,7 @@ def main():
                 project['intro_narration'], project['content_narration'], project['outro_narration'],
             ))
             project['avatar_plan'] = build_avatar_plan(scenes)
-            save_json(meta,project)
+            write_json_atomic(meta,project)
             (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
             (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
             gather_images(scenes,project['theme'],args.output/'images')
@@ -1555,7 +1712,7 @@ def main():
             length=make_srt(scenes,args.output/'subtitles.srt')
             content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
             project['avatar_plan'] = build_avatar_plan(scenes)
-            save_json(meta,project)
+            write_json_atomic(meta,project)
             if content_length >= content_target*(1-args.duration_tolerance): break
         if abs(content_length-content_target)>content_target*args.duration_tolerance:
             log(f'WARNING: Main content is {content_length:.1f}s versus {content_target:.1f}s target; no artificial slowdown applied.')
@@ -1575,9 +1732,55 @@ def main():
         if not music:
             music=select_builtin_bgm(project)
     width, height = VIDEO_RESOLUTIONS[args.resolution]
+    project['background_music'] = [
+        {
+            'source': 'jamendo' if track.get('id') else ('local' if args.bgm_file else 'built-in'),
+            'name': track.get('name') or Path(track['path']).name,
+            'artist': track.get('artist'),
+            'license': track.get('license'),
+        }
+        for track in (music or [])
+    ]
+    write_json_atomic(meta, project)
+    temporary_movie = args.output / 'final.part.mp4'
+    if temporary_movie.is_symlink():
+        raise RuntimeError('Refusing to mux into a symlinked final.part.mp4 in the output directory')
     movie=render(scenes,voice,music,args.output,args.fps,width=width,height=height,
-                 style=args.style,zoom=not args.no_zoom,bgm_volume=args.bgm_volume)
-    log(f'VIDEO: {movie}\nSRT: {args.output / "subtitles.srt"}\nMANIFEST: {meta}')
+                 style=args.style,zoom=not args.no_zoom,bgm_volume=args.bgm_volume,
+                 final_output=temporary_movie)
+    subtitle = args.output / 'subtitles.srt'
+    if not subtitle.is_file() or subtitle.stat().st_size == 0:
+        raise RuntimeError('Subtitles are missing or empty; work files were retained for retry')
+    actual_duration = validate_final_video(movie, length, width, height)
+    final_movie = args.output / 'final.mp4'
+    os.replace(movie, final_movie)
+    project['render_fingerprint'] = requested_fingerprint
+    project['requested_settings'] = requested_render_settings(args)
+    project['final_artifact'] = {
+        'name': final_movie.name,
+        'duration': actual_duration,
+        'width': width,
+        'height': height,
+        'completed_at': datetime.now(timezone.utc).isoformat(),
+    }
+    if project['intermediates'] == 'keep':
+        project['status'] = 'complete'
+        project['cleanup'] = {'status': 'kept'}
+    else:
+        for scene in scenes:
+            scene.pop('image', None)
+            scene.pop('voice', None)
+        project['status'] = 'cleaning'
+        project['cleanup'] = {'status': 'pending'}
+    write_json_atomic(meta, project)
+    if project['status'] == 'cleaning':
+        unknown = cleanup_project_artifacts(args.output, identity, (args.script, args.bgm_file))
+        project['status'] = 'complete'
+        project['cleanup'] = {'status': 'done', 'additional_files': len(unknown)}
+        write_json_atomic(meta, project)
+        if unknown:
+            log(f'Cleanup preserved {len(unknown)} additional files or directories')
+    log(f'VIDEO: {final_movie}\nSRT: {subtitle}\nMANIFEST: {meta}')
 
 
 if __name__=='__main__':
