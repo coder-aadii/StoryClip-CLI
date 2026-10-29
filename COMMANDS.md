@@ -42,6 +42,8 @@ The output defaults to 720p. Set `--resolution 1080p` or `--resolution 2160p` fo
 
 Use either `--idea` or `--script`.
 
+After a verified successful render, the output keeps `final.mp4`, `subtitles.srt`, and `project.json`. Add `--keep-intermediates` before success to retain generated scripts, images, speech and music caches, and clips. Failed runs keep their work files. Extra files you put in the output directory are preserved.
+
 ## Music
 
 Music is enabled by default. Choose a mood by adding `--music-mood "nature,documentary"` to the video command. To disable music, add `--skip-music`.
@@ -60,6 +62,6 @@ ln -sf "$(.venv/bin/python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_f
 
 ## Resume a video
 
-Rerun the same command with the same `--output` path and the same idea or script. Completed work is reused when it matches the saved project.
+Rerun the same command with the same `--output` path and the same idea or script. An incomplete run reuses available work. A completed run with matching settings reports the existing video without provider calls. Use a new output directory if you change TTS, music, resolution, FPS, style, zoom, or other render settings. Passing `--keep-intermediates` after a cleaned run cannot restore deleted files.
 
 The finished video is saved as `outputs/<name>/final.mp4`; subtitles are in `outputs/<name>/subtitles.srt`.

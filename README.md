@@ -39,6 +39,9 @@ Use `./run_video.sh` to launch the CLI. It selects the local FFmpeg build with `
 # Use a NEW output folder if you want a fresh script. Same folder resumes the saved plan.
 ./run_video.sh --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --tts edge --output outputs/lighthouse
 
+# Keep scripts, downloaded images, narration caches, music, and render clips after success:
+./run_video.sh --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --tts edge --keep-intermediates --output outputs/lighthouse-kept
+
 # Script input / Hindi voice:
 ./run_video.sh --script my_hindi_script.txt --language hi --tts auto --output outputs/hindi_story
 
@@ -60,7 +63,7 @@ Use `./run_video.sh` to launch the CLI. It selects the local FFmpeg build with `
 > Every video includes a narrated intro and outro with the avatar. `--outro default` is the generic like/subscribe sign-off; `--outro facts-sun-le-bhai` uses the branded channel call-to-action. The selected profile is part of the project identity. When `--output` is omitted, idea generation requests an `output_slug` in the existing Gemini JSON response and writes to `outputs/<story-name>`. Script input uses the script filename. Rerunning with the same source options and outro profile automatically finds and resumes that folder.
 
 ## Files
-`output/final.mp4`, `output/subtitles.srt`, `output/script.txt` (main content), `output/video_script.txt` (intro + content + outro), `output/project.json`, `output/avatar_plan.json`, `output/images/`, `output/voice/`, and intermediate clips. The SRT is **separate**, not burned into the video.
+After a successful render, a normal output contains only `final.mp4`, `subtitles.srt`, and `project.json`. The SRT is **separate**, not burned into the video. The manifest retains narration, scene timing, avatar plan, image attribution, music selection, render settings fingerprint, and final video details; local paths to removed images and speech are cleared. `--keep-intermediates` retains `script.txt`, `video_script.txt`, `avatar_plan.json`, downloaded images, speech and music caches, and render clips. Unknown user-added files are preserved, so a customized output directory may contain more than the three standard files.
 
 ## Important behavior
 - Scene boundaries respect sentence endings as much as feasible. One scene can be longer or shorter than 10 s. Scene **actual durations** come from synthesized voice audio.
@@ -76,9 +79,10 @@ Use `./run_video.sh` to launch the CLI. It selects the local FFmpeg build with `
 - Narration cache entries are keyed by the complete scene text, requested provider, voice, language, mood, endpoint/model settings, and output settings. Each entry also has matching JSON metadata and WAV validation, so changing a script scene or voice cannot reuse that scene's stale audio. Old filename-only cache files are ignored.
 - All TTS providers pass through the same narration preparation step. It trims only sustained near-silence at each clip edge, retaining about 90 ms at the start and end while preserving pauses within the clip. Versioned trimmed WAVs are derived from the original TTS cache, so rerunning an existing project recalculates narration timing, SRT, and visual transitions without synthesizing speech again.
 - `--style auto` grades every scene from its existing mood: fearful scenes use the darker horror treatment, joyful scenes use brighter color, and neutral scenes remain neutral. Explicit `--style horror`, `joy`, or `neutral` overrides all scenes. Styling is local FFmpeg work and makes no additional LLM or media-provider calls.
-- By default, images alternate smooth, centered zoom-in and zoom-out motion across each full scene regardless of their style. Use `--no-zoom` only when you want to disable this motion.
+- By default, images alternate centered zoom-in and zoom-out motion across each full scene regardless of their style. The zoom uses fractional-pixel sampling to keep the image centered without the crop-position shake. Use `--no-zoom` only when you want to disable this motion.
 - Image collection, narration, scene rendering, and crossfade batches print dependency-free progress bars with percentages and estimated remaining time. Cached work is reported as reused.
-- Generates 1280×720 H.264 by default, 24 fps (configurable FPS), with optional 1080p and 2160p UHD output via `--resolution`. Scene zoom uses only the required overscan. Avatar compositing runs one scene at a time; cached crossfade groups are bounded by resolution, so filter memory does not grow with total scene count. Long UHD renders still require substantial disk space and CPU time.
+- Failed or interrupted runs retain work files for resuming. After the final video and subtitles are validated, default cleanup removes only recognized generated files; `--keep-intermediates` must be chosen before successful cleanup, including when rerunning an older project. A completed project rerun with the same source and settings returns its existing files without provider calls. Changed TTS, music, or render settings require a new output directory; adding `--keep-intermediates` after cleanup cannot restore deleted caches.
+- Generates 1280×720 H.264 by default, 24 fps (configurable FPS), with optional 1080p and 2160p UHD output via `--resolution`. Scene zoom renders at the selected output resolution with fractional-pixel sampling. Avatar compositing runs one scene at a time; cached crossfade groups are bounded by resolution, so filter memory does not grow with total scene count. Long UHD renders still require substantial disk space and CPU time.
 - No separate forced-alignment service. The output SRT is **scene-level accurate** based on audio clip durations, but not word-level accurate.
 - Do not expose `.env` or provider API secrets. API search terms and script text go to third-party providers.
 
