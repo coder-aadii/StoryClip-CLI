@@ -69,6 +69,7 @@ EDGE_TTS_PROVIDERS = (
 )
 TTS_CACHE_VERSION = 1
 RENDER_FINGERPRINT_VERSION = 2
+SEGMENT_RENDER_VERSION = 1
 PROJECT_FORMAT_VERSION = 2
 AVATAR_PLAN_VERSION = 4
 AVATAR_DIR = Path(__file__).resolve().parent / 'storage/Expression_Stickman'
@@ -323,10 +324,10 @@ def outro_narration(profile, language):
         if language == 'hi':
             return ('ऐसे ही इंटरेस्टिंग वीडियो देखने के लिए हमारे चैनल फैक्ट सुन ले भाई को सब्सक्राइब करें। '
                     'और आप अगला वीडियो किस टॉपिक पर देखना चाहते हैं, कमेंट में जरूर बताएं! '
-                    'और हाँ भाई, इस वीडियो को लाइक करना मत भूलना। मैं मिलता हूँ अगले वीडियो में। '
+                    'हाँ भाई, इस वीडियो को लाइक करना मत भूलना। मैं मिलता हूँ अगले वीडियो में। '
                     'तब तक के लिए बाय-बाय, टाटा, सायोनारा!')
         return ('For more interesting videos like this, subscribe to our channel, Fact Sun Le Bhai. '
-                "And tell us in the comments which topic you'd like to see in the next video! "
+                "Tell us in the comments which topic you'd like to see in the next video! "
                 "And yes, don't forget to like this video. I'll see you in the next one. "
                 'Until then, bye-bye, tata, sayonara!')
     if language == 'hi':
@@ -1286,65 +1287,308 @@ def merge_scene_clips(clip_paths, durations, output_dir, fps, width, height, fad
     return output
 
 
-def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME, final_output=None):
-    """Render scenes and composite in bounded, disk-backed FFmpeg jobs."""
+def scene_frame_counts(scenes, fps):
+    """Round cumulative audio boundaries once so scene rounding cannot drift."""
+    if fps <= 0:
+        raise ValueError('FPS must be positive')
+    counts = []
+    elapsed = 0.0
+    previous = 0
+    for index, scene in enumerate(scenes):
+        duration = float(scene['duration'])
+        if not math.isfinite(duration) or duration <= 0:
+            raise ValueError(f'Scene {index + 1} has no valid narration duration')
+        elapsed += duration
+        boundary = round(elapsed * fps)
+        if boundary <= previous:
+            raise ValueError(f'Scene {index + 1} is shorter than one video frame at {fps} FPS')
+        counts.append(boundary - previous)
+        previous = boundary
+    return counts
+
+
+def append_scene_visual(inputs, filters, scene, scene_index, block, manifest, prefix,
+                        input_frames, frame_offset, scene_frames, fade_frames,
+                        fps, width, height, style, zoom, has_next):
+    """Add one scene's image, avatar, and optional outro graphic to a filter graph."""
+    image_input = len(inputs)
+    # Overlay EOF handling can drop its last frame, so provide one source frame of padding.
+    inputs.append((scene['image'], input_frames + 1))
+    avatar = manifest['poses'][block['pose']]
+    avatar_input = len(inputs)
+    inputs.append((avatar['path'], input_frames + 1))
+    duration = float(scene['duration'])
+    scene_style = style
+    if style == 'auto':
+        scene_style = scene.get('mood')
+        if scene_style not in ('horror', 'joy', 'neutral'):
+            scene_style = classify_mood(scene.get('text', ''))
+
+    base = (f'trim=end_frame={input_frames + 1},settb=1/{fps},'
+            f'setpts=PTS-STARTPTS+{frame_offset},'
+            f'scale={width}:{height}:force_original_aspect_ratio=increase,'
+            f'crop={width}:{height}')
+    if zoom:
+        total_frames = scene_frames + (fade_frames if has_next else 0)
+        progress = f'((in-1+{frame_offset})/{total_frames-1})' if total_frames > 1 else '0'
+        eased = f'({progress}*{progress}*(3-2*{progress}))'
+        delta = ZOOM_OVERSCAN - 1
+        factor = (f'1.0+{delta:.2f}*{eased}' if scene_index % 2 == 0
+                  else f'{ZOOM_OVERSCAN:.2f}-{delta:.2f}*{eased}')
+        left = f'W/2-W/(2*({factor}))'
+        right = f'W/2+W/(2*({factor}))'
+        top = f'H/2-H/(2*({factor}))'
+        bottom = f'H/2+H/(2*({factor}))'
+        base += (f',format=yuv444p,perspective=eval=frame:sense=source:interpolation=cubic:'
+                 f"x0='{left}':y0='{top}':x1='{right}':y1='{top}':"
+                 f"x2='{left}':y2='{bottom}':x3='{right}':y3='{bottom}'")
+    if scene_style == 'horror':
+        base += ',eq=brightness=-0.035:saturation=0.80,vignette=PI/4'
+    elif scene_style == 'joy':
+        base += ',eq=brightness=0.018:saturation=1.23:contrast=1.04'
+    filters.append(f'[{image_input}:v]{base},setsar=1,format=yuv420p[{prefix}_image]')
+
+    is_bookend = block['kind'] in ('intro', 'outro')
+    avatar_height = round(height * (AVATAR_BOOKEND_HEIGHT_RATIO if is_bookend
+                                    else AVATAR_DISPLAY_HEIGHT_RATIO))
+    x0, y0, x1, y1 = avatar['alpha_bbox']
+    avatar_filter = (f'trim=end_frame={input_frames + 1},settb=1/{fps},'
+                     f'setpts=PTS-STARTPTS+{frame_offset},format=rgba,'
+                     f'crop={x1-x0}:{y1-y0}:{x0}:{y0},scale=-1:{avatar_height},setsar=1')
+    if scene_index == block['start_scene']:
+        avatar_filter += f',fade=t=in:st=0:d={AVATAR_MOVE_SECONDS:.3f}:alpha=1'
+    if scene_index == block['end_scene']:
+        avatar_filter += (f',fade=t=out:st={max(0.0, duration-AVATAR_MOVE_SECONDS):.3f}:'
+                          f'd={AVATAR_MOVE_SECONDS:.3f}:alpha=1')
+    filters.append(f'[{avatar_input}:v]{avatar_filter}[{prefix}_avatar]')
+
+    side_margin = round(AVATAR_SIDE_MARGIN * width / 1280)
+    bottom_margin = round(AVATAR_BOTTOM_MARGIN * height / 720)
+
+    def x_for(position):
+        if position == 'left':
+            return str(side_margin)
+        if position == 'right':
+            return 'main_w-overlay_w-' + str(side_margin)
+        return '(main_w-overlay_w)/2'
+
+    x = x_for(block['position'])
+    from_x = x_for(block.get('from_position', block['position']))
+    if scene_index == block['start_scene'] and from_x != x:
+        x = (f"'if(lt(t,{AVATAR_MOVE_SECONDS:.3f}),({from_x})+"
+             f"(({x})-({from_x}))*t/{AVATAR_MOVE_SECONDS:.3f},{x})'")
+    y = '(main_h-overlay_h)/2' if is_bookend else f'main_h-overlay_h-{bottom_margin}'
+    avatar_end = duration if scene_index == block['end_scene'] else duration + (fade_frames / fps if has_next else 0)
+    filters.append(
+        f'[{prefix}_image][{prefix}_avatar]overlay=x={x}:y={y}:eof_action=pass:'
+        f"shortest=1:enable='between(t,0,{avatar_end:.6f})'[{prefix}_with_avatar]"
+    )
+    current = f'{prefix}_with_avatar'
+    if block['kind'] == 'outro':
+        cta_input = len(inputs)
+        inputs.append((OUTRO_CTA_IMAGE, input_frames + 1))
+        cta_width = round(width * OUTRO_CTA_WIDTH_RATIO)
+        with Image.open(OUTRO_CTA_IMAGE) as cta_image:
+            source_width, source_height = cta_image.size
+        cta_height = round(cta_width * source_height / source_width)
+        cta_x = (width - cta_width) // 2
+        cta_y = height - round(OUTRO_CTA_BOTTOM_MARGIN * height / 720) - cta_height
+        filters.append(
+            f'[{cta_input}:v]trim=end_frame={input_frames + 1},settb=1/{fps},'
+            f'setpts=PTS-STARTPTS+{frame_offset},format=rgba,scale={cta_width}:{cta_height},'
+            f'fade=t=in:st=0:d={OUTRO_CTA_FADE_SECONDS:.3f}:alpha=1[{prefix}_cta]'
+        )
+        filters.append(
+            f'[{current}][{prefix}_cta]overlay=x={cta_x}:y={cta_y}:eof_action=pass:'
+            f"shortest=1:enable='between(t,0,{duration:.6f})'[{prefix}_with_cta]"
+        )
+        current = f'{prefix}_with_cta'
+    filters.append(f'[{current}]setpts=PTS-STARTPTS,fps={fps},settb=1/{fps},format=yuv420p[{prefix}_ready]')
+    return f'{prefix}_ready'
+
+
+def render_scene_segments(scenes, output_dir, fps, width, height, style, zoom):
+    """Encode each finished scene once, including its incoming transition."""
+    counts = scene_frame_counts(scenes, fps)
+    if not counts:
+        raise ValueError('Cannot render a project without scenes')
+    fade_frames = min(round(0.45 * fps), min(counts) // 4) if len(counts) > 1 else 0
+    plan = build_avatar_plan(scenes)
+    manifest = load_avatar_manifest()
+    blocks = {}
+    for block in plan['blocks']:
+        for scene_index in range(block['start_scene'], block['end_scene'] + 1):
+            blocks[scene_index] = block
+    images = [hashlib.sha256(Path(scene['image']).read_bytes()).hexdigest() for scene in scenes]
+    cta_digest = (hashlib.sha256(OUTRO_CTA_IMAGE.read_bytes()).hexdigest()
+                  if any(block['kind'] == 'outro' for block in plan['blocks']) else None)
     clips = output_dir / 'clips'
+    if clips.is_symlink():
+        raise RuntimeError('Refusing to render into a symlinked clips directory')
     clips.mkdir(exist_ok=True)
-    dur = [float(x['duration']) for x in scenes]
-    fade = min(0.45, min(dur)/4) if len(dur) > 1 else 0
-    progress_started = time.monotonic()
-    for i, sc in enumerate(scenes):
-        scene_style = style
-        if style == 'auto':
-            scene_style = sc.get('mood')
-            if scene_style not in ('horror', 'joy', 'neutral'):
-                scene_style = classify_mood(sc.get('text', ''))
-        dest = clips / f'{i:04}.mp4'
-        seconds = dur[i] + (fade if i < len(scenes)-1 else 0)
-        frames = max(1, round(seconds*fps))
-        # Perspective samples fractional positions each frame; zoompan rounds its moving crop.
-        if zoom:
-            progress = f'((in-1)/{frames-1})' if frames > 1 else '0'
-            eased = f'({progress}*{progress}*(3-2*{progress}))'
-            factor = f'1.0+{ZOOM_OVERSCAN - 1:.2f}*{eased}' if i % 2 == 0 else f'{ZOOM_OVERSCAN:.2f}-{ZOOM_OVERSCAN - 1:.2f}*{eased}'
-            left = f'W/2-W/(2*({factor}))'
-            right = f'W/2+W/(2*({factor}))'
-            top = f'H/2-H/(2*({factor}))'
-            bottom = f'H/2+H/(2*({factor}))'
-            vf = (f'scale={width}:{height}:force_original_aspect_ratio=increase,'
-                  f'crop={width}:{height},format=yuv444p,'
-                  f"perspective=eval=frame:sense=source:interpolation=cubic:"
-                  f"x0='{left}':y0='{top}':x1='{right}':y1='{top}':"
-                  f"x2='{left}':y2='{bottom}':x3='{right}':y3='{bottom}'")
-        else:
-            vf = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}'
-        if scene_style == 'horror':
-            vf += ',eq=brightness=-0.035:saturation=0.80,vignette=PI/4'
-        elif scene_style == 'joy':
-            vf += ',eq=brightness=0.018:saturation=1.23:contrast=1.04'
-        vf += ',setsar=1,format=yuv420p'
-        # Fingerprint inputs: rerenders on effects changes but preserves other usable assets.
-        signature = hashlib.sha256(json.dumps([str(sc['image']),os.path.getmtime(sc['image']),seconds,fps,width,height,vf],sort_keys=True).encode()).hexdigest()
+    outputs = []
+    signatures = []
+    started = time.monotonic()
+    for index, scene in enumerate(scenes):
+        previous = index - 1 if fade_frames and index else None
+        signature = cache_key({
+            'version': SEGMENT_RENDER_VERSION,
+            'scene': index,
+            'image': images[index],
+            'previous_image': images[previous] if previous is not None else None,
+            'duration': float(scene['duration']),
+            'previous_duration': float(scenes[previous]['duration']) if previous is not None else None,
+            'frames': counts[index],
+            'previous_frames': counts[previous] if previous is not None else None,
+            'fade_frames': fade_frames,
+            'fps': fps,
+            'size': [width, height],
+            'style': style,
+            'scene_mood': scene.get('mood'),
+            'previous_mood': scenes[previous].get('mood') if previous is not None else None,
+            'scene_text': scene.get('text') if style == 'auto' else None,
+            'previous_text': scenes[previous].get('text') if previous is not None and style == 'auto' else None,
+            'zoom': zoom,
+            'zoom_overscan': ZOOM_OVERSCAN,
+            'avatar_layout': [AVATAR_DISPLAY_HEIGHT_RATIO, AVATAR_BOOKEND_HEIGHT_RATIO,
+                              AVATAR_SIDE_MARGIN, AVATAR_BOTTOM_MARGIN, AVATAR_MOVE_SECONDS],
+            'cta_layout': [OUTRO_CTA_WIDTH_RATIO, OUTRO_CTA_BOTTOM_MARGIN,
+                           OUTRO_CTA_FADE_SECONDS],
+            'block': blocks[index],
+            'previous_block': blocks[previous] if previous is not None else None,
+            'pose': manifest['poses'][blocks[index]['pose']]['sha256'],
+            'previous_pose': manifest['poses'][blocks[previous]['pose']]['sha256'] if previous is not None else None,
+            'avatar_plan_version': plan['version'],
+            'avatar_asset_version': plan['asset_version'],
+            'outro_cta': cta_digest if blocks[index]['kind'] == 'outro' else None,
+            'encoder': ['libx264', 'veryfast', 23, 'yuv420p'],
+        })
+        dest = clips / f'{index:04}.mp4'
         stamp = dest.with_suffix('.sha256')
-        if dest.exists() and stamp.exists():
-            cached_signature = stamp.read_text()
-            reusable = cached_signature == signature
-            if reusable:
-                log_progress('Rendering', i+1, len(scenes), progress_started)
-                continue
-        log(f'Rendering motion image {i+1}/{len(scenes)}')
-        run(['ffmpeg','-y','-loglevel','error','-loop','1','-framerate',str(fps),'-i',sc['image'],
-             '-vf',vf,'-frames:v',str(frames),'-c:v','libx264','-preset','veryfast','-crf','23',
-             '-threads','2','-pix_fmt','yuv420p',dest])
-        stamp.write_text(signature)
-        log_progress('Rendering', i+1, len(scenes), progress_started)
-    files = [clips / f'{i:04}.mp4' for i in range(len(scenes))]
-    avatar_files, avatar_plan = compose_avatar_scene_clips(scenes, files, output_dir, fps, width, height, fade)
+        if dest.is_symlink() or stamp.is_symlink():
+            raise RuntimeError(f'Refusing symlinked scene cache path for scene {index + 1}')
+        try:
+            cached = json.loads(stamp.read_text(encoding='utf-8'))
+            reusable = (dest.is_file() and dest.stat().st_size > 0 and
+                        cached == {'signature': signature, 'size': dest.stat().st_size})
+        except (OSError, ValueError):
+            reusable = False
+        if reusable:
+            outputs.append(dest)
+            signatures.append(signature)
+            log_progress('Rendering', index + 1, len(scenes), started)
+            continue
+        inputs = []
+        filters = []
+        if previous is not None:
+            previous_label = append_scene_visual(
+                inputs, filters, scenes[previous], previous, blocks[previous], manifest,
+                'previous', fade_frames, counts[previous], counts[previous], fade_frames,
+                fps, width, height, style, zoom, previous < len(scenes) - 1,
+            )
+        current_label = append_scene_visual(
+            inputs, filters, scene, index, blocks[index], manifest, 'current',
+            counts[index], 0, counts[index], fade_frames,
+            fps, width, height, style, zoom, index < len(scenes) - 1,
+        )
+        if previous is not None:
+            filters.append(
+                f'[{previous_label}][{current_label}]xfade=transition=fade:'
+                f'duration={fade_frames/fps:.9f}:offset=0,'
+                f'trim=end_frame={counts[index]},settb=1/{fps},setpts=N[out]'
+            )
+        else:
+            filters.append(f'[{current_label}]trim=end_frame={counts[index]}[out]')
+        command = ['ffmpeg', '-y', '-loglevel', 'error']
+        for path, frames in inputs:
+            command.extend(['-loop', '1', '-framerate', str(fps),
+                            '-t', f'{frames/fps:.9f}', '-i', str(path)])
+        temporary = dest.with_name(dest.stem + '.part.mp4')
+        if temporary.is_symlink():
+            raise RuntimeError(f'Refusing symlinked temporary scene path for scene {index + 1}')
+        command.extend([
+            '-filter_complex_threads', '1', '-filter_complex', ';'.join(filters),
+            '-map', '[out]', '-an', '-frames:v', str(counts[index]), '-r', str(fps),
+            '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast', '-crf', '23',
+            '-pix_fmt', 'yuv420p', '-video_track_timescale', str(fps * 1000), temporary,
+        ])
+        log(f'Rendering finished scene {index + 1}/{len(scenes)}')
+        run(command)
+        if not temporary.is_file() or temporary.stat().st_size == 0:
+            raise RuntimeError(f'Scene {index + 1} render produced no video; prior segments were retained')
+        os.replace(temporary, dest)
+        write_json_atomic(stamp, {'signature': signature, 'size': dest.stat().st_size})
+        outputs.append(dest)
+        signatures.append(signature)
+        log_progress('Rendering', index + 1, len(scenes), started)
+    return outputs, signatures, counts, fade_frames, plan
+
+
+def join_scene_segments(paths, signatures, counts, output_dir, fps, width, height):
+    """Join compatible H.264 scene segments without decoding their video."""
+    visual = output_dir / 'visual_only.mp4'
+    stamp = output_dir / 'visual_only.sha256'
+    clips = output_dir / 'clips'
+    if clips.is_symlink() or visual.is_symlink() or stamp.is_symlink():
+        raise RuntimeError('Refusing symlinked joined-video cache paths')
+    signature = cache_key({'version': SEGMENT_RENDER_VERSION, 'segments': signatures,
+                           'frames': counts, 'fps': fps, 'size': [width, height]})
+    try:
+        cached = json.loads(stamp.read_text(encoding='utf-8'))
+        if (visual.is_file() and visual.stat().st_size > 0 and
+                cached == {'signature': signature, 'size': visual.stat().st_size}):
+            log('Final video join: cached output reused')
+            return visual
+    except (OSError, ValueError):
+        pass
+    manifest = clips / 'segments.ffconcat'
+    if manifest.is_symlink():
+        raise RuntimeError('Refusing a symlinked scene concat manifest')
+    entries = ['ffconcat version 1.0']
+    for path in paths:
+        escaped = str(path.resolve()).replace("'", "'\\''")
+        entries.append(f"file '{escaped}'")
+    manifest.write_text('\n'.join(entries) + '\n', encoding='utf-8')
+    temporary = output_dir / 'visual_only.part.mp4'
+    if temporary.is_symlink():
+        raise RuntimeError('Refusing symlinked joined-video cache paths')
+    run(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0',
+         '-i', manifest, '-map', '0:v:0', '-an', '-c:v', 'copy', temporary])
+    if not temporary.is_file() or temporary.stat().st_size == 0:
+        raise RuntimeError('Scene join produced no video; segments were retained for retry')
+    try:
+        probe = json.loads(run([
+            'ffprobe', '-v', 'error', '-count_frames', '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_name,width,height,nb_read_frames',
+            '-of', 'json', temporary,
+        ]))
+        stream = next(iter(probe.get('streams', [])), {})
+        actual_frames = int(stream.get('nb_read_frames', -1))
+    except (ValueError, TypeError, AttributeError) as ex:
+        raise RuntimeError('FFprobe could not validate the joined video; segments were retained') from ex
+    if (stream.get('codec_name') != 'h264' or
+            (stream.get('width'), stream.get('height')) != (width, height) or
+            actual_frames != sum(counts)):
+        raise RuntimeError(
+            f'Scene join failed frame or format validation: expected {sum(counts)} H.264 '
+            f'frames at {width}x{height}, got {actual_frames} frames with '
+            f'{stream.get("codec_name")} at {stream.get("width")}x{stream.get("height")}; '
+            'segments were retained for retry'
+        )
+    os.replace(temporary, visual)
+    write_json_atomic(stamp, {'signature': signature, 'size': visual.stat().st_size})
+    return visual
+
+
+def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME, final_output=None):
+    """Encode finished scene segments, join by stream copy, then mux audio."""
+    files, signatures, counts, _, avatar_plan = render_scene_segments(
+        scenes, output_dir, fps, width, height, style, zoom,
+    )
     save_json(output_dir / 'avatar_plan.json', avatar_plan)
-    visual = merge_scene_clips(avatar_files, dur, output_dir, fps, width, height, fade,
-                               resolution=next((name for name, size in VIDEO_RESOLUTIONS.items() if size == (width, height)), '720p'))
+    visual = join_scene_segments(files, signatures, counts, output_dir, fps, width, height)
     out = final_output if final_output is not None else output_dir / 'final.mp4'
-    total = sum(dur)
+    total = sum(float(scene['duration']) for scene in scenes)
     log('Muxing narration and optional music into final video')
     if music:
         first = music[0]['path']
@@ -1431,11 +1675,11 @@ def validate_final_video(path, expected_duration, width, height):
 
 
 MANAGED_ARTIFACTS = {
-    '.': re.compile(r'(?:script\.txt|video_script\.txt|avatar_plan\.json|visual_only\.(?:mp4|sha256)|final\.part\.mp4|project\.json\.part)'),
+    '.': re.compile(r'(?:script\.txt|video_script\.txt|avatar_plan\.json|visual_only\.(?:mp4|sha256|part\.mp4)|final\.part\.mp4|project\.json\.part)'),
     'images': re.compile(r'(?:fallback_[0-9]+|scene_[0-9a-f]{20})\.jpg'),
     'voice': re.compile(r'(?:narration\.wav|narration_concat\.txt|[0-9]{4}_[0-9a-f]{20}\.(?:wav|json|part\.wav|part\.mp3|json\.part)|trim_v[0-9]+_[0-9]{4}_[0-9a-f]{20}\.wav(?:\.part)?)'),
     'music': re.compile(r'(?:credits\.json|jamendo_[0-9]+\.mp3)'),
-    'clips': re.compile(r'[0-9]{4}\.(?:mp4|sha256|part\.mp4)'),
+    'clips': re.compile(r'(?:[0-9]{4}\.(?:mp4|sha256|part\.mp4)|segments\.ffconcat)'),
     'clips/avatar': re.compile(r'[0-9]{4}\.(?:mp4|sha256|part\.mp4)'),
     'clips/xfade': re.compile(r'pass-[0-9]{2}-[0-9]{4}\.(?:mp4|sha256|part\.mp4)'),
 }

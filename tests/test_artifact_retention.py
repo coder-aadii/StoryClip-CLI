@@ -40,11 +40,13 @@ class ArtifactRetentionTests(unittest.TestCase):
     def fake_render(scenes, narration, music, output_dir, *args, **kwargs):
         (output_dir / 'visual_only.mp4').write_bytes(b'visual')
         (output_dir / 'visual_only.sha256').write_text('signature', encoding='utf-8')
+        (output_dir / 'visual_only.part.mp4').write_bytes(b'stale join')
         (output_dir / 'avatar_plan.json').write_text('{}', encoding='utf-8')
         clips = output_dir / 'clips'
         clips.mkdir(exist_ok=True)
         (clips / '0000.mp4').write_bytes(b'clip')
         (clips / '0000.sha256').write_text('signature', encoding='utf-8')
+        (clips / 'segments.ffconcat').write_text('ffconcat version 1.0\n', encoding='utf-8')
         avatar = clips / 'avatar'
         avatar.mkdir(exist_ok=True)
         (avatar / '0000.mp4').write_bytes(b'avatar')
