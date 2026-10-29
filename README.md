@@ -2,7 +2,7 @@
 
 Standalone **Python CLI**, no frontend or StoryWeaver dependency.
 
-**Flow:** idea → Gemini story → sentence-aware ~10-second scenes → Gemini Pexels photo queries → themed fallback photos → Edge/Gemini/local Indic Parler narration → scene-timed SRT → bundled theme-matched BGM (or optional rights-cleared Jamendo track) → FFmpeg landscape MP4 with still-photo crossfades.
+**Flow:** idea → Gemini script → mandatory narrated intro and outro → sentence-aware ~10-second scenes → Gemini Pexels photo queries → themed fallback photos → Edge/Gemini/local Indic Parler narration → expression-stickman avatar → scene-timed SRT → bundled theme-matched BGM (or optional rights-cleared Jamendo track) → FFmpeg landscape MP4 with still-photo crossfades.
 
 ## Requirements
 - Python 3.12+
@@ -26,6 +26,10 @@ cp .env.example .env
 ```bash
 # Omit --output to use the story-name slug returned in Gemini's JSON response:
 python video_cli.py --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --tts edge
+
+# Select the branded Fact Sun Le Bhai outro:
+python video_cli.py --idea 'Why the sky looks blue' --language hi --minutes 2 \
+  --outro facts-sun-le-bhai --tts edge
 
 # See planned scenes/queries first, without fetching media:
 python video_cli.py --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --dry-run --output outputs/lighthouse
@@ -51,13 +55,16 @@ python video_cli.py --script script.txt --language en --skip-music --output outp
 python video_cli.py --script script.txt --language en --bgm-file storage/horror_theme_1.mp3 --output outputs/horror
 ```
 
-> When `--output` is omitted, idea generation requests an `output_slug` in the existing Gemini JSON response and writes to `outputs/<story-name>`. Script input uses the script filename. The source fingerprint is saved in `project.json`; rerunning with the same idea/script, language, duration, theme, and music mood automatically finds and resumes that folder without regenerating the story. An explicit `--output` always overrides automatic naming.
+> Every video includes a narrated intro and outro with the avatar. `--outro default` is the generic like/subscribe sign-off; `--outro facts-sun-le-bhai` uses the branded channel call-to-action. The selected profile is part of the project identity. When `--output` is omitted, idea generation requests an `output_slug` in the existing Gemini JSON response and writes to `outputs/<story-name>`. Script input uses the script filename. Rerunning with the same source options and outro profile automatically finds and resumes that folder.
 
 ## Files
-`output/final.mp4`, `output/subtitles.srt`, `output/script.txt` (on fresh projects), `output/project.json`, `output/images/`, `output/voice/`, and intermediate clips. The SRT is **separate**, not burned into the video.
+`output/final.mp4`, `output/subtitles.srt`, `output/script.txt` (main content), `output/video_script.txt` (intro + content + outro), `output/project.json`, `output/avatar_plan.json`, `output/images/`, `output/voice/`, and intermediate clips. The SRT is **separate**, not burned into the video.
 
 ## Important behavior
 - Scene boundaries respect sentence endings as much as feasible. One scene can be longer or shorter than 10 s. Scene **actual durations** come from synthesized voice audio.
+- Intro and outro are mandatory narrated scenes. Idea-generated main content reserves time for both bookends inside the requested `--minutes`; supplied scripts remain the main content and have the bookends added around them.
+- The avatar appears throughout: larger and centered in both dimensions during the intro/outro, then starts on the left and alternates sides during content. Pose blocks follow roughly 10-second narration scenes, with a smooth slide between sides and image-space scoring to avoid especially busy areas. The avatar is composited into each scene clip before bounded crossfade assembly.
+- The outro overlays the supplied combined Like, Comment, Share, and Subscribe image in front of the avatar's lower legs. The image is scaled proportionally and appears only during the outro.
 - Subtitles use **one scene per cue**, aligned to the start/end of that scene's speech segment; they are not word-level alignment.
 - Images are Pexels results with up to 8 theme-matched local fallback photos. Pexels attribution links/photographer names are in `project.json`. Respect Pexels API attribution requirements in any application interface.
 - Bundled science, horror, mystery, nature, and technology tracks in `storage/` are selected by project theme and mixed at a low default linear volume of `0.08` (about −22 dB), with a short crossfade when looping and fades at the beginning/end. Set `--bgm-volume` from `0` to `1` to adjust it, or use `--skip-music` to disable all BGM. Track sources and license notes are in [`storage/ATTRIBUTION.md`](storage/ATTRIBUTION.md).
@@ -69,12 +76,11 @@ python video_cli.py --script script.txt --language en --bgm-file storage/horror_
 - `--style auto` grades every scene from its existing mood: fearful scenes use the darker horror treatment, joyful scenes use brighter color, and neutral scenes remain neutral. Explicit `--style horror`, `joy`, or `neutral` overrides all scenes. Styling is local FFmpeg work and makes no additional LLM or media-provider calls.
 - By default, images alternate smooth, centered zoom-in and zoom-out motion across each full scene regardless of their style. Use `--no-zoom` only when you want to disable this motion.
 - Image collection, narration, and scene rendering print dependency-free progress bars with percentages and estimated remaining time. Cached work is included as immediately completed progress.
-- Generates 1280×720 H.264, 24 fps (configurable FPS), with image crossfades. Video length and audio length can differ slightly due to frame rounding. Runtime and RAM scale with number of scenes; for very long projects, the xfade filter can be memory-heavy.
+- Generates 1280×720 H.264 by default, 24 fps (configurable FPS), with optional 1080p and 2160p UHD output via `--resolution`. Scene zoom uses only the required overscan. Avatar compositing runs one scene at a time; cached crossfade groups are bounded by resolution, so filter memory does not grow with total scene count. Long UHD renders still require substantial disk space and CPU time.
 - No separate forced-alignment service. The output SRT is **scene-level accurate** based on audio clip durations, but not word-level accurate.
 - Do not expose `.env` or provider API secrets. API search terms and script text go to third-party providers.
 
 ## Current limitations
-- Rendering uses a single FFmpeg `xfade` graph; on 10+ minute videos with many photos it can consume substantial RAM. Split long projects into segments if needed.
 - One theme-matched BGM track plays across the full video. There is no automatic per-scene mood-switching or beat matching yet. Music ducking is a fixed low-volume mix, not dialogue-detection sidechain compression.
 - No automated commercial-rights verification can be inferred from a Jamendo CC license alone.
 - The client cannot detect a server-side model or weights change made in place behind the same Indic Parler URL. Use a new output folder (or change the endpoint) if that service implementation changes and fresh speech is required.

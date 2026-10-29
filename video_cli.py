@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
+from PIL import Image, ImageFilter, ImageStat
 
 load_dotenv()
 SESSION = requests.Session()
@@ -65,6 +66,35 @@ EDGE_TTS_PROVIDERS = (
     'edge', 'edge-female', 'edge-femail', 'edge-male', 'edge-male-energetic',
 )
 TTS_CACHE_VERSION = 1
+PROJECT_FORMAT_VERSION = 2
+AVATAR_PLAN_VERSION = 4
+AVATAR_DIR = Path(__file__).resolve().parent / 'storage/Expression_Stickman'
+AVATAR_MANIFEST_PATH = AVATAR_DIR / 'manifest.json'
+OUTRO_CTA_IMAGE = Path(__file__).resolve().parent / 'storage/Outro_image/Like_share_comment_subscribe_combined.png'
+AVATAR_DISPLAY_HEIGHT_RATIO = 0.36
+AVATAR_BOOKEND_HEIGHT_RATIO = 0.52
+AVATAR_SIDE_MARGIN = 32
+AVATAR_BOTTOM_MARGIN = 18
+AVATAR_TARGET_BLOCK_SECONDS = 10.0
+AVATAR_MIN_POSITION_HOLD_SECONDS = 10.0
+AVATAR_MOVE_SECONDS = 0.8
+OUTRO_CTA_WIDTH_RATIO = 0.78
+OUTRO_CTA_BOTTOM_MARGIN = 16
+OUTRO_CTA_FADE_SECONDS = 0.45
+OUTRO_PROFILES = ('default', 'facts-sun-le-bhai')
+VIDEO_RESOLUTIONS = {
+    '720p': (1280, 720),
+    '1080p': (1920, 1080),
+    '2160p': (3840, 2160),
+}
+# Keep UHD batches smaller while avoiding repeated full-length encode passes on 1-hour projects.
+XFADE_MERGE_INPUTS = {'720p': 64, '1080p': 40, '2160p': 24}
+ZOOM_OVERSCAN = 1.12
+AVATAR_CUES = {
+    'explanation', 'visual_focus', 'question', 'important_fact', 'warning',
+    'reveal', 'surprise', 'celebration',
+}
+_AVATAR_MANIFEST_CACHE = None
 
 
 def log(s):
@@ -108,7 +138,13 @@ def log_progress(label, completed, total, started):
 def run(cmd):
     p = subprocess.run([str(x) for x in cmd], capture_output=True, text=True)
     if p.returncode:
-        raise RuntimeError(f"Command failed: {' '.join(str(x) for x in cmd[:8])}\n{p.stderr[-3000:]}")
+        status = f'exit code {p.returncode}'
+        if p.returncode < 0:
+            status = f'terminated by signal {-p.returncode}'
+        details = p.stderr[-3000:].strip() or 'No diagnostic text was returned by the process.'
+        raise RuntimeError(
+            f"Command failed ({status}): {' '.join(str(x) for x in cmd[:8])}\n{details}"
+        )
     return p.stdout.strip()
 
 
@@ -142,14 +178,21 @@ def gemini_json(prompt):
     raise RuntimeError(f'Gemini text generation failed: {last}')
 
 
-def narrative_from_idea(idea, language, minutes):
+def reserved_intro_outro_seconds(outro_profile):
+    return 20 if outro_profile == 'facts-sun-le-bhai' else 15
+
+
+def narrative_from_idea(idea, language, minutes, outro_profile='default'):
     log('Generating narration script with Gemini')
-    words=int(minutes*(145 if language=='hi' else 155))
-    prompt=(f'Create an original, engaging spoken narration for a photo-based documentary/story video. '
+    content_minutes=max(0.25, minutes-reserved_intro_outro_seconds(outro_profile)/60)
+    words=int(content_minutes*(145 if language=='hi' else 155))
+    prompt=(f'Create an engaging spoken explainer script for an educational photo-based video. '
             f'Language: {"Hindi in Devanagari" if language=="hi" else "English"}. Idea: {idea}. '
-            f'Approximate spoken length: {minutes} minutes (~{words} words, prioritize natural pacing). '
-            'Write a complete plot with compelling sensory detail; satisfy the requested length without repetition. No time codes, no camera directions, no headings, no background-music directions in the narration. '
-            'Do not invent factual claims presented as established truths; when fictional, make it clearly fiction. '
+            f'Approximate MAIN CONTENT length: {content_minutes:.2f} minutes (~{words} words, prioritize natural pacing). '
+            'A required intro and outro will be added separately, so do not write a greeting, channel call-to-action, or sign-off. '
+            'Explain the topic clearly for a general audience with a compelling opening, coherent progression, concrete examples, and a concise takeaway. '
+            'For science, history, or factual topics, distinguish established facts from uncertainty and do not invent claims. '
+            'Satisfy the requested length without repetition. No time codes, camera directions, headings, or music directions. '
             'Return JSON object with keys "title" (short text), "output_slug" (2-8 lowercase ASCII words '
             'separated only by hyphens, suitable for a folder name), "narration" (continuous spoken text), '
             '"theme" (2-4 English words describing photo background), "music_moods" (array of 2 English keywords).')
@@ -158,7 +201,7 @@ def narrative_from_idea(idea, language, minutes):
     return result
 
 
-def source_identity(kind, text, language, minutes=None, theme=None, music_mood=None):
+def source_identity(kind, text, language, minutes=None, theme=None, music_mood=None, outro_profile='default'):
     normalized = re.sub(r'\s+', ' ', text.strip())
     settings = {
         'kind': kind,
@@ -166,6 +209,7 @@ def source_identity(kind, text, language, minutes=None, theme=None, music_mood=N
         'minutes': float(minutes) if kind == 'idea' else None,
         'theme': theme or None,
         'music_mood': music_mood or None,
+        'outro': outro_profile,
     }
     serialized = json.dumps(
         {'text': normalized, **settings}, ensure_ascii=False, sort_keys=True, separators=(',', ':')
@@ -216,14 +260,231 @@ def classify_mood(text):
     return 'neutral'
 
 
+def intro_narration(title, language):
+    display_title = re.sub(r'[_-]+', ' ', str(title or '')).strip() or ('आज का विषय' if language == 'hi' else "today's topic")
+    if language == 'hi':
+        return f'नमस्कार दोस्तों! आज के वीडियो में हम जानेंगे: {display_title}। चलिए शुरू करते हैं।'
+    return f"Hello everyone! In today's video, we're exploring {display_title}. Let's begin."
+
+
+def outro_narration(profile, language):
+    if profile not in OUTRO_PROFILES:
+        raise ValueError(f'Unsupported outro profile: {profile}')
+    if profile == 'facts-sun-le-bhai':
+        if language == 'hi':
+            return ('ऐसे ही इंटरेस्टिंग वीडियो देखने के लिए हमारे चैनल फैक्ट सुन ले भाई को सब्सक्राइब करें। '
+                    'और हाँ भाई, इस वीडियो को लाइक करना मत भूलना। मैं मिलता हूँ अगले वीडियो में। '
+                    'तब तक के लिए बाय-बाय, टाटा, सायोनारा!')
+        return ('For more interesting videos like this, subscribe to our channel, Fact Sun Le Bhai. '
+                "And yes, don't forget to like this video. I'll see you in the next one. "
+                'Until then, bye-bye, tata, sayonara!')
+    if language == 'hi':
+        return ('वीडियो देखने के लिए धन्यवाद। अगर आपको यह वीडियो पसंद आया, तो इसे लाइक करें और ऐसे ही '
+                'वीडियो के लिए चैनल को सब्सक्राइब करें। फिर मिलेंगे अगले वीडियो में। तब तक के लिए बाय-बाय!')
+    return ('Thanks for watching. If you enjoyed this video, please like it and subscribe for more. '
+            'See you in the next video. Bye!')
+
+
+def compose_narration(content, title, language, outro_profile):
+    intro = intro_narration(title, language)
+    outro = outro_narration(outro_profile, language)
+    return intro, outro, '\n\n'.join((intro, content.strip(), outro))
+
+
+def build_video_scenes(content, title, language, theme, outro_profile):
+    intro, outro, full_narration = compose_narration(content, title, language, outro_profile)
+    content_scenes = plan_scenes(content, language, theme)
+    for scene in content_scenes:
+        scene['kind'] = 'content'
+    scenes = [
+        {
+            'text': intro,
+            'query': f'{theme} educational introduction',
+            'image': None,
+            'mood': 'joy',
+            'kind': 'intro',
+            'avatar_cue': 'explanation',
+        },
+        *content_scenes,
+        {
+            'text': outro,
+            'query': f'{theme} calm background',
+            'image': None,
+            'mood': 'joy',
+            'kind': 'outro',
+            'avatar_cue': 'celebration',
+        },
+    ]
+    return scenes, intro, outro, full_narration
+
+
+def load_avatar_manifest():
+    global _AVATAR_MANIFEST_CACHE
+    if _AVATAR_MANIFEST_CACHE is not None:
+        return _AVATAR_MANIFEST_CACHE
+    try:
+        data = json.loads(AVATAR_MANIFEST_PATH.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as ex:
+        raise RuntimeError(f'Avatar manifest is unavailable or invalid: {AVATAR_MANIFEST_PATH}') from ex
+    poses = {}
+    for pose in data.get('poses', []):
+        name = pose.get('name')
+        filename = pose.get('file')
+        if not name or not filename or name in poses:
+            raise RuntimeError('Avatar manifest contains a missing or duplicate pose name/file')
+        path = (AVATAR_DIR / filename).resolve()
+        if not path.is_relative_to(AVATAR_DIR.resolve()) or not path.is_file():
+            raise RuntimeError(f'Avatar asset is missing or outside its asset directory: {filename}')
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest != pose.get('sha256'):
+            raise RuntimeError(f'Avatar asset checksum does not match manifest: {filename}')
+        try:
+            with Image.open(path) as image:
+                alpha_bbox = image.getchannel('A').getbbox() if image.mode == 'RGBA' else None
+                if image.mode != 'RGBA' or list(image.size) != pose.get('size') or list(alpha_bbox or ()) != pose.get('alpha_bbox'):
+                    raise RuntimeError(f'Avatar asset RGBA geometry does not match manifest: {filename}')
+        except OSError as ex:
+            raise RuntimeError(f'Avatar asset cannot be decoded: {filename}') from ex
+        poses[name] = {**pose, 'path': path}
+    if not poses:
+        raise RuntimeError('Avatar manifest contains no poses')
+    _AVATAR_MANIFEST_CACHE = {'version': data.get('version'), 'poses': poses}
+    return _AVATAR_MANIFEST_CACHE
+
+
+def avatar_region_score(scenes, position):
+    scores = []
+    for scene in scenes:
+        image_path = scene.get('image')
+        if not image_path:
+            continue
+        path = Path(image_path)
+        if not path.is_file():
+            continue
+        try:
+            with Image.open(path) as image:
+                gray = image.convert('L').resize((180, 102))
+                left = {'left': 0, 'center': 60, 'right': 120}[position]
+                region = gray.crop((left, 48, left + 60, 102))
+                edge_mean = ImageStat.Stat(region.filter(ImageFilter.FIND_EDGES)).mean[0]
+                contrast = ImageStat.Stat(region).stddev[0]
+                scores.append(edge_mean + contrast * 0.35)
+        except OSError:
+            continue
+    return sum(scores) / len(scores) if scores else None
+
+
+def avatar_pose_for_block(scenes, position, previous_pose=None, block_index=0):
+    priorities = (
+        'warning', 'important_fact', 'reveal', 'question', 'surprise',
+        'celebration', 'visual_focus', 'explanation',
+    )
+    cues = [scene.get('avatar_cue', 'explanation') for scene in scenes]
+    cue = next((candidate for candidate in priorities if candidate in cues), 'explanation')
+    pose = {
+        'warning': 'serious_fact',
+        'important_fact': 'serious_fact',
+        'reveal': 'idea_reveal',
+        'question': 'thinking',
+        'surprise': 'shocked',
+        'celebration': 'celebrating',
+        'visual_focus': 'pointing_right' if position == 'left' else 'pointing_left' if position == 'right' else 'presenting',
+        'explanation': ('explaining', 'presenting', 'pointing_up')[block_index % 3],
+    }[cue]
+    rare = {'idea_reveal', 'shocked', 'celebrating'}
+    if pose in rare and previous_pose in rare:
+        return 'explaining'
+    return pose
+
+
+def build_avatar_plan(scenes):
+    manifest = load_avatar_manifest()
+    blocks = []
+    content_group = []
+    content_seconds = 0.0
+    grouped = []
+    for index, scene in enumerate(scenes):
+        if scene.get('kind') != 'content':
+            if content_group:
+                grouped.append(content_group)
+                content_group = []
+                content_seconds = 0.0
+            grouped.append([(index, scene)])
+            continue
+        duration = float(scene.get('duration') or max(1.5, len(scene.get('text', '').split()) / 2.0))
+        if content_group and content_seconds + duration > AVATAR_TARGET_BLOCK_SECONDS:
+            grouped.append(content_group)
+            content_group = []
+            content_seconds = 0.0
+        content_group.append((index, scene))
+        content_seconds += duration
+        if content_seconds >= AVATAR_TARGET_BLOCK_SECONDS:
+            grouped.append(content_group)
+            content_group = []
+            content_seconds = 0.0
+    if content_group:
+        grouped.append(content_group)
+
+    previous_position = None
+    previous_pose = None
+    position_held = 0.0
+    content_block_index = 0
+    for group in grouped:
+        indices = [item[0] for item in group]
+        block_scenes = [item[1] for item in group]
+        kind = block_scenes[0].get('kind', 'content')
+        duration = sum(float(scene.get('duration') or max(1.5, len(scene.get('text', '').split()) / 2.0)) for scene in block_scenes)
+        if kind == 'intro':
+            position, pose = 'center', 'waving'
+        elif kind == 'outro':
+            position, pose = 'center', 'waving'
+        else:
+            scores = {side: avatar_region_score(block_scenes, side) for side in ('left', 'right')}
+            if previous_position == 'left':
+                position = 'right'
+            else:
+                position = 'left'
+            other = 'right' if position == 'left' else 'left'
+            if position_held < AVATAR_MIN_POSITION_HOLD_SECONDS and previous_position in ('left', 'right'):
+                position = previous_position
+            elif scores[position] is not None and scores[other] is not None and scores[position] > scores[other] + 25:
+                position = other
+            pose = avatar_pose_for_block(block_scenes, position, previous_pose, content_block_index)
+        if pose not in manifest['poses']:
+            raise RuntimeError(f'Avatar pose {pose!r} is missing from manifest')
+        state = {'pose': pose, 'position': position}
+        for _, scene in group:
+            scene['avatar'] = dict(state)
+        blocks.append({
+            'start_scene': indices[0],
+            'end_scene': indices[-1],
+            'kind': kind,
+            'from_position': previous_position or 'center',
+            **state,
+        })
+        if kind == 'content':
+            if position == previous_position:
+                position_held += duration
+            else:
+                previous_position = position
+                position_held = duration
+            previous_pose = pose
+            content_block_index += 1
+    return {
+        'version': AVATAR_PLAN_VERSION,
+        'asset_version': manifest['version'],
+        'blocks': blocks,
+    }
+
+
 def expand_narration(project, seconds_missing):
-    """Append a story continuation; never time-stretch narration to meet requested minutes."""
+    """Extend the main content; never time-stretch narration to meet requested minutes."""
     language = project['language']
     extra_words = max(70, int(seconds_missing * (2.3 if language == 'hi' else 2.55)))
-    prompt = (f'Continue this original narrative naturally in {"Hindi (Devanagari)" if language == "hi" else "English"}. '
-              f'Write approximately {extra_words} ADDITIONAL spoken words, adding meaningful action or resolution, not repetition. '
-              'Do not repeat the ending; this continuation will be appended after the existing text. '
-              'Return JSON with one key: "continuation". Story so far:\n' + project['narration'][-7500:])
+    prompt = (f'Continue this explanatory narration naturally in {"Hindi (Devanagari)" if language == "hi" else "English"}. '
+              f'Write approximately {extra_words} ADDITIONAL spoken words with useful related information, not repetition. '
+              'Do not add a greeting, channel call-to-action, or sign-off; those are added separately. '
+              'Return JSON with one key: "continuation". Narration so far:\n' + project.get('content_narration', project['narration'])[-7500:])
     result = gemini_json(prompt)
     addition = str(result.get('continuation', '')).strip()
     if len(addition) < 70:
@@ -250,11 +511,13 @@ def plan_scenes(narration, language, theme):
         buf.append(s);secs+=est
     if buf:groups.append(' '.join(buf))
     query_text='\n'.join(f'{i}: {g[:420]}' for i,g in enumerate(groups))
-    prompt=(f'For every numbered narration segment, suggest one visually relevant Pexels PHOTO search query. '
+    prompt=(f'For every numbered narration segment, suggest one visually relevant Pexels PHOTO search query and one restrained avatar cue. '
             f'Narration language {language}; theme: {theme}. Queries MUST be ENGLISH, photographic, concrete, '
             'not abstract moods. 2-6 keywords. Keep visual descriptions faithful to what narrator says; '
             'do not hallucinate or claim that a visual is an exact depiction of real people/events. '
-            'Return JSON with key "queries", array of objects {"id":integer,"query":string} covering all ids. '
+            f'Avatar cue must be one of: {", ".join(sorted(AVATAR_CUES))}. Use explanation for ordinary narration; '
+            'only choose a special cue when the words clearly signal that beat. '
+            'Return JSON with key "queries", array of objects {"id":integer,"query":string,"avatar_cue":string} covering all ids. '
             'Segments:\n'+query_text)
     # Chunk so long videos do not overload the model.
     mapping={}
@@ -263,8 +526,22 @@ def plan_scenes(narration, language, theme):
         local='\n'.join(f'{offset+i}: {g[:420]}' for i,g in enumerate(subset))
         data=gemini_json(prompt.split('Segments:\n')[0]+'Segments:\n'+local)
         for x in data.get('queries',[]):
-            if isinstance(x,dict) and str(x.get('id','')).isdigit(): mapping[int(x['id'])]=str(x.get('query',''))
-    return [{'text':s,'query':mapping.get(i,theme),'image':None,'mood':classify_mood(s+' '+theme)} for i,s in enumerate(groups)]
+            if isinstance(x,dict) and str(x.get('id','')).isdigit():
+                cue = x.get('avatar_cue')
+                mapping[int(x['id'])] = {
+                    'query': str(x.get('query', '')),
+                    'avatar_cue': cue if cue in AVATAR_CUES else 'explanation',
+                }
+    return [
+        {
+            'text': segment,
+            'query': mapping.get(i, {}).get('query') or theme,
+            'image': None,
+            'mood': classify_mood(segment + ' ' + theme),
+            'avatar_cue': mapping.get(i, {}).get('avatar_cue', 'explanation'),
+        }
+        for i, segment in enumerate(groups)
+    ]
 
 
 def pexels_search(query, count=8):
@@ -302,7 +579,12 @@ def gather_images(scenes, theme, folder):
     used=set()
     progress_started = time.monotonic()
     for i,sc in enumerate(scenes):
-        dest=folder/f'scene_{i:04}.jpg'
+        current_image = Path(sc.get('image', '')) if sc.get('image') else None
+        if current_image and current_image.is_file():
+            log_progress('Images', i+1, len(scenes), progress_started)
+            continue
+        scene_key = hashlib.sha256((sc.get('kind', 'content') + '\0' + sc['text']).encode('utf-8')).hexdigest()[:20]
+        dest=folder/f'scene_{scene_key}.jpg'
         if dest.exists():
             sc['image']=str(dest)
             log_progress('Images', i+1, len(scenes), progress_started)
@@ -727,8 +1009,220 @@ def select_bgm(moods, folder, duration, approved):
     return chosen,tracks
 
 
+def compose_avatar_scene_clips(scenes, clip_paths, output_dir, fps, width, height, fade):
+    """Add at most one avatar and the optional CTA to each scene clip."""
+    manifest = load_avatar_manifest()
+    plan = build_avatar_plan(scenes)
+    blocks_by_scene = {}
+    for block in plan['blocks']:
+        for scene_index in range(block['start_scene'], block['end_scene'] + 1):
+            blocks_by_scene[scene_index] = block
+
+    avatar_clips = output_dir / 'clips' / 'avatar'
+    avatar_clips.mkdir(parents=True, exist_ok=True)
+    side_margin = round(AVATAR_SIDE_MARGIN * width / 1280)
+    bottom_margin = round(AVATAR_BOTTOM_MARGIN * height / 720)
+    cta_bottom_margin = round(OUTRO_CTA_BOTTOM_MARGIN * height / 720)
+    cta_digest = hashlib.sha256(OUTRO_CTA_IMAGE.read_bytes()).hexdigest()
+
+    def x_for(position):
+        if position == 'left':
+            return str(side_margin)
+        if position == 'right':
+            return f'main_w-overlay_w-{side_margin}'
+        return '(main_w-overlay_w)/2'
+
+    outputs = []
+    for index, (scene, source_clip) in enumerate(zip(scenes, clip_paths)):
+        block = blocks_by_scene[index]
+        pose = manifest['poses'][block['pose']]
+        is_bookend = block['kind'] in ('intro', 'outro')
+        duration = float(scene['duration'])
+        clip_duration = duration + (fade if index < len(scenes) - 1 else 0)
+        frame_count = max(1, round(clip_duration * fps))
+        avatar_height = round(height * (
+            AVATAR_BOOKEND_HEIGHT_RATIO if is_bookend else AVATAR_DISPLAY_HEIGHT_RATIO
+        ))
+        x0, y0, x1, y1 = pose['alpha_bbox']
+        start_of_block = index == block['start_scene']
+        end_of_block = index == block['end_scene']
+        fade_in = start_of_block
+        fade_out = end_of_block
+        fade_out_start = max(0.0, duration - AVATAR_MOVE_SECONDS)
+        avatar_enable_end = duration if end_of_block else clip_duration
+        dest = avatar_clips / f'{index:04}.mp4'
+        stamp = dest.with_suffix('.sha256')
+        source_stat = source_clip.stat()
+        signature_data = {
+            'plan_version': plan['version'],
+            'asset_version': plan['asset_version'],
+            'pose_sha256': pose['sha256'],
+            'source': [str(source_clip), source_stat.st_size, source_stat.st_mtime_ns],
+            'block': block,
+            'duration': duration,
+            'clip_duration': clip_duration,
+            'fps': fps,
+            'size': [width, height],
+            'avatar_height': avatar_height,
+            'margins': [side_margin, bottom_margin],
+            'cta_sha256': cta_digest if block['kind'] == 'outro' else None,
+            'cta_layout': [OUTRO_CTA_WIDTH_RATIO, cta_bottom_margin],
+        }
+        signature = hashlib.sha256(json.dumps(signature_data, sort_keys=True).encode()).hexdigest()
+        if dest.is_file() and stamp.is_file() and stamp.read_text(encoding='utf-8') == signature:
+            outputs.append(dest)
+            continue
+
+        args = ['ffmpeg', '-y', '-loglevel', 'error', '-i', source_clip,
+                '-loop', '1', '-framerate', str(fps), '-t', f'{clip_duration:.3f}', '-i', pose['path']]
+        avatar_filters = [
+            f'format=rgba,crop={x1-x0}:{y1-y0}:{x0}:{y0},scale=-1:{avatar_height},setsar=1'
+        ]
+        if fade_in:
+            avatar_filters.append(f'fade=t=in:st=0:d={AVATAR_MOVE_SECONDS:.3f}:alpha=1')
+        if fade_out:
+            avatar_filters.append(
+                f'fade=t=out:st={fade_out_start:.3f}:d={AVATAR_MOVE_SECONDS:.3f}:alpha=1'
+            )
+        filters = [f'[1:v]{",".join(avatar_filters)}[avatar]']
+        x = x_for(block['position'])
+        from_x = x_for(block.get('from_position', block['position']))
+        if start_of_block and from_x != x:
+            x = (
+                f"'if(lt(t,{AVATAR_MOVE_SECONDS:.3f}),"
+                f"({from_x})+(({x})-({from_x}))*t/{AVATAR_MOVE_SECONDS:.3f},{x})'"
+            )
+        y = '(main_h-overlay_h)/2' if is_bookend else f'main_h-overlay_h-{bottom_margin}'
+        filters.append(
+            f"[0:v][avatar]overlay=x={x}:y={y}:eof_action=pass:shortest=1:"
+            f"enable='between(t,0,{avatar_enable_end:.3f})'[with_avatar]"
+        )
+        current_label = 'with_avatar'
+        if block['kind'] == 'outro':
+            cta_width = round(width * OUTRO_CTA_WIDTH_RATIO)
+            with Image.open(OUTRO_CTA_IMAGE) as cta_image:
+                source_width, source_height = cta_image.size
+            cta_height = round(cta_width * source_height / source_width)
+            cta_x = (width - cta_width) // 2
+            cta_y = height - cta_bottom_margin - cta_height
+            args.extend(['-loop', '1', '-framerate', str(fps), '-t', f'{clip_duration:.3f}', '-i', OUTRO_CTA_IMAGE])
+            filters.append(
+                f'[2:v]format=rgba,scale={cta_width}:{cta_height},'
+                f'fade=t=in:st=0:d={OUTRO_CTA_FADE_SECONDS:.3f}:alpha=1[outro_cta]'
+            )
+            filters.append(
+                f"[{current_label}][outro_cta]overlay=x={cta_x}:y={cta_y}:"
+                f"eof_action=pass:shortest=1:enable='between(t,0,{duration:.3f})'[with_cta]"
+            )
+            current_label = 'with_cta'
+        tmp = dest.with_name(dest.stem + '.part.mp4')
+        run([
+            *args, '-filter_complex_threads', '1', '-filter_complex', ';'.join(filters),
+            '-map', f'[{current_label}]', '-an', '-frames:v', str(frame_count), '-r', str(fps),
+            '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast', '-crf', '23',
+            '-pix_fmt', 'yuv420p', tmp,
+        ])
+        os.replace(tmp, dest)
+        stamp.write_text(signature, encoding='utf-8')
+        outputs.append(dest)
+    return outputs, plan
+
+
+def merge_xfade_batch(items, output, fade, fps, width, height, final_group=False):
+    """Crossfade a bounded number of clips and cache the resulting disk-backed segment."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    stamp = output.with_suffix('.sha256')
+    input_signatures = []
+    for item in items:
+        stat = item['path'].stat()
+        input_signatures.append((str(item['path']), stat.st_size, stat.st_mtime_ns, item['duration']))
+    signature = hashlib.sha256(json.dumps({
+        'inputs': input_signatures,
+        'fade': fade,
+        'fps': fps,
+        'size': [width, height],
+        'final_group': final_group,
+        'filter_version': 2,
+        'encoder': ['libx264', 'veryfast', 20],
+    }, sort_keys=True).encode()).hexdigest()
+    if output.is_file() and stamp.is_file() and stamp.read_text(encoding='utf-8') == signature:
+        return
+    if len(items) == 1:
+        shutil.copyfile(items[0]['path'], output)
+        stamp.write_text(signature, encoding='utf-8')
+        return
+
+    args = ['ffmpeg', '-y', '-loglevel', 'error']
+    for item in items:
+        args.extend(['-i', item['path']])
+    filters = []
+    for index in range(len(items)):
+        filters.append(
+            f'[{index}:v]fps={fps},settb=1/{fps},setpts=PTS-STARTPTS,format=yuv420p[v{index}]'
+        )
+    current = 'v0'
+    elapsed = float(items[0]['duration'])
+    for index in range(1, len(items)):
+        next_label = f'x{index}'
+        filters.append(
+            f'[{current}][v{index}]xfade=transition=fade:duration={fade:.3f}:'
+            f'offset={elapsed:.6f}[raw_{next_label}]'
+        )
+        # Some FFmpeg builds leave chained xfade outputs with an undefined
+        # frame rate (1/0). Re-establish CFR and the xfade time base after
+        # every transition before that output is used by the next xfade.
+        filters.append(
+            f'[raw_{next_label}]fps={fps},settb=1/{fps},setpts=PTS-STARTPTS,'
+            f'format=yuv420p[{next_label}]'
+        )
+        current = next_label
+        elapsed += float(items[index]['duration'])
+    tmp = output.with_name(output.stem + '.part.mp4')
+    run([
+        *args, '-filter_complex_threads', '1', '-filter_complex', ';'.join(filters),
+        '-map', f'[{current}]', '-an', '-r', str(fps),
+        '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast', '-crf', '20',
+        '-pix_fmt', 'yuv420p', tmp,
+    ])
+    os.replace(tmp, output)
+    stamp.write_text(signature, encoding='utf-8')
+
+
+def merge_scene_clips(clip_paths, durations, output_dir, fps, width, height, fade, resolution):
+    """Merge scenes in a bounded fan-in tree so filter memory does not grow with scene count."""
+    items = [
+        {'path': path, 'duration': float(duration)}
+        for path, duration in zip(clip_paths, durations)
+    ]
+    if len(items) == 1:
+        shutil.copyfile(items[0]['path'], output_dir / 'visual_only.mp4')
+        return output_dir / 'visual_only.mp4'
+
+    fan_in = XFADE_MERGE_INPUTS[resolution]
+    merge_dir = output_dir / 'clips' / 'xfade'
+    level = 0
+    while len(items) > fan_in:
+        merged = []
+        log(f'Crossfade pass {level + 1}: {len(items)} segments in groups of up to {fan_in}')
+        for group_index, start in enumerate(range(0, len(items), fan_in)):
+            group = items[start:start + fan_in]
+            group_duration = sum(item['duration'] for item in group)
+            is_final_group = start + len(group) == len(items)
+            path = merge_dir / f'pass-{level:02d}-{group_index:04d}.mp4'
+            if len(group) > 1:
+                merge_xfade_batch(group, path, fade, fps, width, height, is_final_group)
+            merged.append({'path': path if len(group) > 1 else group[0]['path'], 'duration': group_duration})
+        items = merged
+        level += 1
+
+    log(f'Final crossfade pass: {len(items)} segments')
+    output = output_dir / 'visual_only.mp4'
+    merge_xfade_batch(items, output, fade, fps, width, height, final_group=True)
+    return output
+
+
 def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME):
-    """Render a lightweight Ken Burns photo movie with per-scene grading and fades."""
+    """Render scenes and composite in bounded, disk-backed FFmpeg jobs."""
     clips = output_dir / 'clips'
     clips.mkdir(exist_ok=True)
     dur = [float(x['duration']) for x in scenes]
@@ -743,17 +1237,16 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
         dest = clips / f'{i:04}.mp4'
         seconds = dur[i] + (fade if i < len(scenes)-1 else 0)
         frames = max(1, round(seconds*fps))
-        # Oversampling keeps zoompan's integer crop coordinates from wobbling at output
-        # resolution. Ease across the full scene so motion never hits a zoom limit early.
+        # Only overscan by the maximum zoom amount; 4x oversampling makes UHD needlessly costly.
         if zoom:
             progress = f'(on/{frames-1})' if frames > 1 else '0'
             eased = f'({progress}*{progress}*(3-2*{progress}))'
-            factor = f'1.0+0.12*{eased}' if i % 2 == 0 else f'1.12-0.12*{eased}'
-            motion_width = width * 4
-            motion_height = height * 4
+            factor = f'1.0+{ZOOM_OVERSCAN - 1:.2f}*{eased}' if i % 2 == 0 else f'{ZOOM_OVERSCAN:.2f}-{ZOOM_OVERSCAN - 1:.2f}*{eased}'
+            motion_width = math.ceil(width * ZOOM_OVERSCAN / 2) * 2
+            motion_height = math.ceil(height * ZOOM_OVERSCAN / 2) * 2
             vf = (f'scale={motion_width}:{motion_height}:force_original_aspect_ratio=increase,'
                   f'crop={motion_width}:{motion_height},'
-                  f'zoompan=z=\'{factor}\':x=\'iw/2-iw/zoom/2\':y=\'ih/2-ih/zoom/2\':'
+                  f'format=yuv420p,zoompan=z=\'{factor}\':x=\'iw/2-iw/zoom/2\':y=\'ih/2-ih/zoom/2\':'
                   f'd={frames}:s={width}x{height}:fps={fps}')
         else:
             vf = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}'
@@ -765,34 +1258,42 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
         # Fingerprint inputs: rerenders on effects changes but preserves other usable assets.
         signature = hashlib.sha256(json.dumps([str(sc['image']),os.path.getmtime(sc['image']),seconds,fps,width,height,vf],sort_keys=True).encode()).hexdigest()
         stamp = dest.with_suffix('.sha256')
-        if dest.exists() and stamp.exists() and stamp.read_text() == signature:
-            log_progress('Rendering', i+1, len(scenes), progress_started)
-            continue
+        if dest.exists() and stamp.exists():
+            cached_signature = stamp.read_text()
+            reusable = cached_signature == signature
+            # Keep already-rendered 720p clips from the previous 4x overscan renderer.
+            if not reusable and zoom and (width, height) == VIDEO_RESOLUTIONS['720p']:
+                old_motion_width, old_motion_height = width * 4, height * 4
+                old_vf = (
+                    f'scale={old_motion_width}:{old_motion_height}:force_original_aspect_ratio=increase,'
+                    f'crop={old_motion_width}:{old_motion_height},'
+                    f'zoompan=z=\'{factor}\':x=\'iw/2-iw/zoom/2\':y=\'ih/2-ih/zoom/2\':'
+                    f'd={frames}:s={width}x{height}:fps={fps}'
+                )
+                if scene_style == 'horror':
+                    old_vf += ',eq=brightness=-0.035:saturation=0.80,vignette=PI/4'
+                elif scene_style == 'joy':
+                    old_vf += ',eq=brightness=0.018:saturation=1.23:contrast=1.04'
+                old_vf += ',setsar=1,format=yuv420p'
+                old_signature = hashlib.sha256(json.dumps(
+                    [str(sc['image']), os.path.getmtime(sc['image']), seconds, fps, width, height, old_vf],
+                    sort_keys=True,
+                ).encode()).hexdigest()
+                reusable = cached_signature == old_signature
+            if reusable:
+                log_progress('Rendering', i+1, len(scenes), progress_started)
+                continue
         log(f'Rendering motion image {i+1}/{len(scenes)}')
         run(['ffmpeg','-y','-loglevel','error','-loop','1','-framerate',str(fps),'-i',sc['image'],
              '-vf',vf,'-frames:v',str(frames),'-c:v','libx264','-preset','veryfast','-crf','23',
-             '-pix_fmt','yuv420p',dest])
+             '-threads','2','-pix_fmt','yuv420p',dest])
         stamp.write_text(signature)
         log_progress('Rendering', i+1, len(scenes), progress_started)
-    visual = output_dir / 'visual_only.mp4'
     files = [clips / f'{i:04}.mp4' for i in range(len(scenes))]
-    if len(files) == 1:
-        shutil.copyfile(files[0],visual)
-    else:
-        log('Combining rendered scenes with crossfades')
-        inputs = []
-        for f in files: inputs.extend(['-i',f])
-        parts = []
-        label = '0:v'
-        elapsed = dur[0]
-        for i in range(1,len(files)):
-            nxt = f'v{i}'
-            parts.append(f'[{label}][{i}:v]xfade=transition=fade:duration={fade:.3f}:offset={elapsed:.3f}[{nxt}]')
-            label = nxt
-            elapsed += dur[i]
-        run(['ffmpeg','-y','-loglevel','error',*inputs,'-filter_complex',';'.join(parts),
-             '-map',f'[{label}]','-c:v','libx264','-preset','veryfast','-crf','23',
-             '-pix_fmt','yuv420p',visual])
+    avatar_files, avatar_plan = compose_avatar_scene_clips(scenes, files, output_dir, fps, width, height, fade)
+    save_json(output_dir / 'avatar_plan.json', avatar_plan)
+    visual = merge_scene_clips(avatar_files, dur, output_dir, fps, width, height, fade,
+                               resolution=next((name for name, size in VIDEO_RESOLUTIONS.items() if size == (width, height)), '720p'))
     out = output_dir / 'final.mp4'
     total = sum(dur)
     log('Muxing narration and optional music into final video')
@@ -849,11 +1350,15 @@ def build_parser():
     p.add_argument('--skip-music',action='store_true')
     p.add_argument('--dry-run',action='store_true',help='Stop after script, scenes and search queries are planned')
     p.add_argument('--fps',type=int,default=24)
+    p.add_argument('--resolution', choices=VIDEO_RESOLUTIONS, default='720p',
+                   help='Output size: 720p, 1080p, or 2160p UHD')
     p.add_argument('--style',choices=['auto','horror','joy','neutral'],default='auto',help='Visual grading: auto follows each scene mood; another value overrides every scene')
     p.add_argument('--no-zoom',action='store_true')
     p.add_argument('--bgm-file',type=Path,help='Local music file for which you have suitable video-sync rights')
     p.add_argument('--bgm-volume',type=float,default=DEFAULT_BGM_VOLUME,help='BGM linear volume from 0 to 1 (default: 0.08)')
     p.add_argument('--duration-tolerance',type=float,default=0.07,help='Fractional tolerance for idea-generated videos')
+    p.add_argument('--outro', choices=OUTRO_PROFILES, default='default',
+                   help='Mandatory outro profile (default: generic; facts-sun-le-bhai adds the branded Hindi/English call-to-action)')
     return p
 
 
@@ -888,6 +1393,7 @@ def main():
         args.minutes,
         args.theme,
         args.music_mood,
+        args.outro,
     )
     prepared_project = None
     if args.output is None:
@@ -898,7 +1404,7 @@ def main():
             log(f'Automatically resuming matching project: {args.output}')
         else:
             if args.idea:
-                prepared_project = narrative_from_idea(args.idea,args.language,args.minutes)
+                prepared_project = narrative_from_idea(args.idea,args.language,args.minutes,args.outro)
                 suggested_slug = prepared_project.get('output_slug') or prepared_project.get('title')
                 fallback_seed = args.idea
             else:
@@ -918,13 +1424,28 @@ def main():
     meta=args.output/'project.json'
     if meta.exists():
         project=json.loads(meta.read_text(encoding='utf-8'))
+        if project.get('format_version') != PROJECT_FORMAT_VERSION:
+            raise RuntimeError(
+                'This saved project predates mandatory avatar intro/outro scenes; use a new --output directory '
+                'to avoid reusing media planned for a different scene layout'
+            )
+        if project.get('outro_profile') != args.outro:
+            raise RuntimeError(
+                f'Saved project outro is {project.get("outro_profile")!r}, but --outro is {args.outro!r}; '
+                'use a new --output directory for a different intro/outro plan'
+            )
+        if project.get('source') != identity:
+            raise RuntimeError(
+                'The requested source or generation settings differ from the saved project; use a new --output '
+                'directory so narration, scenes, and cached media remain matched'
+            )
         if project.get('language') != args.language:
             raise RuntimeError(
                 f'Saved project language is {project.get("language")!r}, but --language is {args.language!r}; '
                 'use a new --output directory for a different language'
             )
         if args.script:
-            if current_script != project.get('narration', '').strip():
+            if current_script != project.get('content_narration', project.get('narration', '')).strip():
                 raise RuntimeError(
                     'The script differs from the narration saved in project.json; use a new --output '
                     'directory so the scene plan and media cannot be reused for stale text'
@@ -934,43 +1455,67 @@ def main():
         if prepared_project is not None:
             project = prepared_project
         elif args.idea:
-            project=narrative_from_idea(args.idea,args.language,args.minutes)
+            project=narrative_from_idea(args.idea,args.language,args.minutes,args.outro)
         else:
             project={'title':args.script.stem,'narration':current_script,'theme':args.theme or 'cinematic nature landscape','music_moods':['cinematic']}
         project['source'] = identity
+        project['format_version'] = PROJECT_FORMAT_VERSION
+        project['outro_profile'] = args.outro
         project['output_slug'] = args.output.name
         project['language']=args.language
         project['theme']=args.theme or project.get('theme') or 'cinematic landscape'
         project['music_moods']=[x.strip() for x in args.music_mood.split(',')] if args.music_mood else project.get('music_moods',['cinematic'])
-        project['scenes']=plan_scenes(project['narration'],args.language,project['theme'])
+        project['content_narration'] = project['narration'].strip()
+        scenes, intro, outro, video_narration = build_video_scenes(
+            project['content_narration'], project.get('title'), args.language, project['theme'], args.outro
+        )
+        project['intro_narration'] = intro
+        project['outro_narration'] = outro
+        project['video_narration'] = video_narration
+        project['scenes'] = scenes
+        project['avatar_plan'] = build_avatar_plan(project['scenes'])
         save_json(meta,project)
-        (args.output/'script.txt').write_text(project['narration'],encoding='utf-8')
+        (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
+        (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
     if args.dry_run:
-        log(f'Dry run: {len(project["scenes"])} planned scenes in {meta}');return
+        log(f'Dry run: {len(project["scenes"])} planned scenes with mandatory intro/outro and avatar states in {meta}');return
     scenes=project['scenes']
     gather_images(scenes,project['theme'],args.output/'images');save_json(meta,project)
     voice=narrate(scenes,args.output/'voice',project['language'],args.tts,args.indic_url,args.indic_voice)
-    length=make_srt(scenes,args.output/'subtitles.srt');save_json(meta,project)
-    if args.idea and project.get('narration') and length < 60*args.minutes*(1-args.duration_tolerance):
+    length=make_srt(scenes,args.output/'subtitles.srt')
+    project['avatar_plan'] = build_avatar_plan(scenes)
+    save_json(meta,project)
+    content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
+    bookend_length = sum(scene['duration'] for scene in scenes if scene.get('kind') != 'content')
+    content_target = max(0, 60 * args.minutes - bookend_length)
+    if args.idea and project.get('content_narration') and content_length < content_target*(1-args.duration_tolerance):
         # At most two continuations, avoiding endless retries and preserving old audio.
         for attempt in range(2):
-            deficit=60*args.minutes-length
+            deficit=content_target-content_length
             log(f'Script shorter than target by {deficit:.1f}s; requesting meaningful continuation {attempt+1}/2')
-            old=len(scenes)
             extra=expand_narration(project,deficit)
             added=plan_scenes(extra,project['language'],project['theme'])
-            scenes.extend(added)
-            project['narration'] += '\n' + extra
-            # Scene files are indexed; existing assets/narration remain reusable.
+            for scene in added:
+                scene['kind'] = 'content'
+            scenes[-1:-1] = added
+            project['content_narration'] += '\n' + extra
+            project['narration'] = project['content_narration']
+            project['video_narration'] = '\n\n'.join((
+                project['intro_narration'], project['content_narration'], project['outro_narration'],
+            ))
+            project['avatar_plan'] = build_avatar_plan(scenes)
             save_json(meta,project)
-            (args.output/'script.txt').write_text(project['narration'],encoding='utf-8')
+            (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
+            (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
             gather_images(scenes,project['theme'],args.output/'images')
             voice=narrate(scenes,args.output/'voice',project['language'],args.tts,args.indic_url,args.indic_voice)
             length=make_srt(scenes,args.output/'subtitles.srt')
+            content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
+            project['avatar_plan'] = build_avatar_plan(scenes)
             save_json(meta,project)
-            if length >= 60*args.minutes*(1-args.duration_tolerance): break
-        if abs(length-60*args.minutes)>60*args.minutes*args.duration_tolerance:
-            log(f'WARNING: Actual {length:.1f}s is outside requested duration tolerance; no artificial slowdown applied.')
+            if content_length >= content_target*(1-args.duration_tolerance): break
+        if abs(content_length-content_target)>content_target*args.duration_tolerance:
+            log(f'WARNING: Main content is {content_length:.1f}s versus {content_target:.1f}s target; no artificial slowdown applied.')
     log(f'Narration duration: {length:.1f}s; scenes: {len(scenes)}')
     music=None
     if args.skip_music:
@@ -986,7 +1531,9 @@ def main():
             log('No JAMENDO_CLIENT_ID; using built-in BGM')
         if not music:
             music=select_builtin_bgm(project)
-    movie=render(scenes,voice,music,args.output,args.fps,style=args.style,zoom=not args.no_zoom,bgm_volume=args.bgm_volume)
+    width, height = VIDEO_RESOLUTIONS[args.resolution]
+    movie=render(scenes,voice,music,args.output,args.fps,width=width,height=height,
+                 style=args.style,zoom=not args.no_zoom,bgm_volume=args.bgm_volume)
     log(f'VIDEO: {movie}\nSRT: {args.output / "subtitles.srt"}\nMANIFEST: {meta}')
 
 
