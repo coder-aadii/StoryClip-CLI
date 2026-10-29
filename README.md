@@ -23,36 +23,38 @@ cp .env.example .env
 ```
 
 ## Run
+Use `./run_video.sh` to launch the CLI. It selects the local FFmpeg build with `xfade` when available and uses the project's virtual environment.
+
 ```bash
 # Omit --output to use the story-name slug returned in Gemini's JSON response:
-python video_cli.py --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --tts edge
+./run_video.sh --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --tts edge
 
 # Select the branded Fact Sun Le Bhai outro:
-python video_cli.py --idea 'Why the sky looks blue' --language hi --minutes 2 \
+./run_video.sh --idea 'Why the sky looks blue' --language hi --minutes 2 \
   --outro facts-sun-le-bhai --tts edge
 
 # See planned scenes/queries first, without fetching media:
-python video_cli.py --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --dry-run --output outputs/lighthouse
+./run_video.sh --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --dry-run --output outputs/lighthouse
 
 # Use a NEW output folder if you want a fresh script. Same folder resumes the saved plan.
-python video_cli.py --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --tts edge --output outputs/lighthouse
+./run_video.sh --idea 'A suspenseful mystery in an abandoned lighthouse' --language en --minutes 2 --tts edge --output outputs/lighthouse
 
 # Script input / Hindi voice:
-python video_cli.py --script my_hindi_script.txt --language hi --tts auto --output outputs/hindi_story
+./run_video.sh --script my_hindi_script.txt --language hi --tts auto --output outputs/hindi_story
 
 # Hindi storytelling with the local Indic Parler service and Rani voice:
-python video_cli.py --script my_hindi_script.txt --language hi \
+./run_video.sh --script my_hindi_script.txt --language hi \
   --tts indic-parler --indic-url http://127.0.0.1:8765 --indic-voice Rani \
   --skip-music --output outputs/hindi_rani
 
 # Force theme/music keywords:
-python video_cli.py --script script.txt --language en --theme 'dark foggy forest' --music-mood 'horror,suspense' --output outputs/horror
+./run_video.sh --script script.txt --language en --theme 'dark foggy forest' --music-mood 'horror,suspense' --output outputs/horror
 
 # Disable all BGM:
-python video_cli.py --script script.txt --language en --skip-music --output outputs/no_bgm
+./run_video.sh --script script.txt --language en --skip-music --output outputs/no_bgm
 
 # Use a local track only if you have suitable video-sync rights:
-python video_cli.py --script script.txt --language en --bgm-file storage/horror_theme_1.mp3 --output outputs/horror
+./run_video.sh --script script.txt --language en --bgm-file storage/horror_theme_1.mp3 --output outputs/horror
 ```
 
 > Every video includes a narrated intro and outro with the avatar. `--outro default` is the generic like/subscribe sign-off; `--outro facts-sun-le-bhai` uses the branded channel call-to-action. The selected profile is part of the project identity. When `--output` is omitted, idea generation requests an `output_slug` in the existing Gemini JSON response and writes to `outputs/<story-name>`. Script input uses the script filename. Rerunning with the same source options and outro profile automatically finds and resumes that folder.
@@ -75,7 +77,7 @@ python video_cli.py --script script.txt --language en --bgm-file storage/horror_
 - All TTS providers pass through the same narration preparation step. It trims only sustained near-silence at each clip edge, retaining about 90 ms at the start and end while preserving pauses within the clip. Versioned trimmed WAVs are derived from the original TTS cache, so rerunning an existing project recalculates narration timing, SRT, and visual transitions without synthesizing speech again.
 - `--style auto` grades every scene from its existing mood: fearful scenes use the darker horror treatment, joyful scenes use brighter color, and neutral scenes remain neutral. Explicit `--style horror`, `joy`, or `neutral` overrides all scenes. Styling is local FFmpeg work and makes no additional LLM or media-provider calls.
 - By default, images alternate smooth, centered zoom-in and zoom-out motion across each full scene regardless of their style. Use `--no-zoom` only when you want to disable this motion.
-- Image collection, narration, and scene rendering print dependency-free progress bars with percentages and estimated remaining time. Cached work is included as immediately completed progress.
+- Image collection, narration, scene rendering, and crossfade batches print dependency-free progress bars with percentages and estimated remaining time. Cached work is reported as reused.
 - Generates 1280×720 H.264 by default, 24 fps (configurable FPS), with optional 1080p and 2160p UHD output via `--resolution`. Scene zoom uses only the required overscan. Avatar compositing runs one scene at a time; cached crossfade groups are bounded by resolution, so filter memory does not grow with total scene count. Long UHD renders still require substantial disk space and CPU time.
 - No separate forced-alignment service. The output SRT is **scene-level accurate** based on audio clip durations, but not word-level accurate.
 - Do not expose `.env` or provider API secrets. API search terms and script text go to third-party providers.

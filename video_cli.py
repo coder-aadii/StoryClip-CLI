@@ -135,7 +135,9 @@ def log_progress(label, completed, total, started):
     log(progress_message(label, completed, total, started))
 
 
-def run(cmd):
+def run(cmd, progress_label=None, progress_duration=None):
+    if progress_label:
+        return run_with_progress(cmd, progress_label, progress_duration)
     p = subprocess.run([str(x) for x in cmd], capture_output=True, text=True)
     if p.returncode:
         status = f'exit code {p.returncode}'
@@ -146,6 +148,50 @@ def run(cmd):
             f"Command failed ({status}): {' '.join(str(x) for x in cmd[:8])}\n{details}"
         )
     return p.stdout.strip()
+
+
+def run_with_progress(cmd, label, duration):
+    """Stream FFmpeg's machine-readable progress while retaining error details."""
+    command = [str(x) for x in cmd]
+    total_seconds = max(1, round(float(duration or 1)))
+    started = time.monotonic()
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+    output_tail = ''
+    progress_fields = {}
+    last_reported = -1
+    report_step = max(1, total_seconds // 20)
+    for line in process.stdout:
+        output_tail = (output_tail + line)[-3000:]
+        if '=' not in line:
+            continue
+        key, value = line.rstrip().split('=', 1)
+        progress_fields[key] = value
+        if key != 'progress':
+            continue
+        timestamp = progress_fields.get('out_time_us') or progress_fields.get('out_time_ms')
+        if timestamp and timestamp.isdigit():
+            completed = min(total_seconds - 1, int(timestamp) // 1_000_000)
+            if completed > last_reported and (
+                last_reported < 0 or completed - last_reported >= report_step
+            ):
+                log_progress(label, completed, total_seconds, started)
+                last_reported = completed
+        progress_fields.clear()
+
+    return_code = process.wait()
+    if return_code:
+        status = f'exit code {return_code}'
+        if return_code < 0:
+            status = f'terminated by signal {-return_code}'
+        details = output_tail.strip() or 'No diagnostic text was returned by the process.'
+        raise RuntimeError(
+            f"Command failed ({status}): {' '.join(command[:8])}\n{details}"
+        )
+    log_progress(label, total_seconds, total_seconds, started)
+    return ''
 
 
 def save_json(path, obj):
@@ -273,14 +319,16 @@ def outro_narration(profile, language):
     if profile == 'facts-sun-le-bhai':
         if language == 'hi':
             return ('ऐसे ही इंटरेस्टिंग वीडियो देखने के लिए हमारे चैनल फैक्ट सुन ले भाई को सब्सक्राइब करें। '
+                    'और आप अगला वीडियो किस टॉपिक पर देखना चाहते हैं, कमेंट में जरूर बताएं! '
                     'और हाँ भाई, इस वीडियो को लाइक करना मत भूलना। मैं मिलता हूँ अगले वीडियो में। '
                     'तब तक के लिए बाय-बाय, टाटा, सायोनारा!')
         return ('For more interesting videos like this, subscribe to our channel, Fact Sun Le Bhai. '
+                "And tell us in the comments which topic you'd like to see in the next video! "
                 "And yes, don't forget to like this video. I'll see you in the next one. "
                 'Until then, bye-bye, tata, sayonara!')
     if language == 'hi':
         return ('वीडियो देखने के लिए धन्यवाद। अगर आपको यह वीडियो पसंद आया, तो इसे लाइक करें और ऐसे ही '
-                'वीडियो के लिए चैनल को सब्सक्राइब करें। फिर मिलेंगे अगले वीडियो में। तब तक के लिए बाय-बाय!')
+                'वीडियोस के लिए चैनल को सब्सक्राइब करें। फिर मिलेंगे अगले वीडियो में। तब तक के लिए बाय-बाय!')
     return ('Thanks for watching. If you enjoyed this video, please like it and subscribe for more. '
             'See you in the next video. Bye!')
 
@@ -1128,7 +1176,7 @@ def compose_avatar_scene_clips(scenes, clip_paths, output_dir, fps, width, heigh
     return outputs, plan
 
 
-def merge_xfade_batch(items, output, fade, fps, width, height, final_group=False):
+def merge_xfade_batch(items, output, fade, fps, width, height, final_group=False, progress_label='Crossfade'):
     """Crossfade a bounded number of clips and cache the resulting disk-backed segment."""
     output.parent.mkdir(parents=True, exist_ok=True)
     stamp = output.with_suffix('.sha256')
@@ -1142,23 +1190,24 @@ def merge_xfade_batch(items, output, fade, fps, width, height, final_group=False
         'fps': fps,
         'size': [width, height],
         'final_group': final_group,
-        'filter_version': 2,
+        'filter_version': 3,
         'encoder': ['libx264', 'veryfast', 20],
     }, sort_keys=True).encode()).hexdigest()
     if output.is_file() and stamp.is_file() and stamp.read_text(encoding='utf-8') == signature:
+        log(f'{progress_label}: cached segment reused')
         return
     if len(items) == 1:
         shutil.copyfile(items[0]['path'], output)
         stamp.write_text(signature, encoding='utf-8')
         return
 
-    args = ['ffmpeg', '-y', '-loglevel', 'error']
+    args = ['ffmpeg', '-y', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats']
     for item in items:
         args.extend(['-i', item['path']])
     filters = []
     for index in range(len(items)):
         filters.append(
-            f'[{index}:v]fps={fps},settb=1/{fps},setpts=PTS-STARTPTS,format=yuv420p[v{index}]'
+            f'[{index}:v]setpts=PTS-STARTPTS,fps={fps},settb=1/{fps},format=yuv420p[v{index}]'
         )
     current = 'v0'
     elapsed = float(items[0]['duration'])
@@ -1172,7 +1221,7 @@ def merge_xfade_batch(items, output, fade, fps, width, height, final_group=False
         # frame rate (1/0). Re-establish CFR and the xfade time base after
         # every transition before that output is used by the next xfade.
         filters.append(
-            f'[raw_{next_label}]fps={fps},settb=1/{fps},setpts=PTS-STARTPTS,'
+            f'[raw_{next_label}]setpts=PTS-STARTPTS,fps={fps},settb=1/{fps},'
             f'format=yuv420p[{next_label}]'
         )
         current = next_label
@@ -1183,7 +1232,8 @@ def merge_xfade_batch(items, output, fade, fps, width, height, final_group=False
         '-map', f'[{current}]', '-an', '-r', str(fps),
         '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast', '-crf', '20',
         '-pix_fmt', 'yuv420p', tmp,
-    ])
+    ], progress_label=progress_label,
+       progress_duration=sum(float(item['duration']) for item in items) + (0 if final_group else fade))
     os.replace(tmp, output)
     stamp.write_text(signature, encoding='utf-8')
 
@@ -1203,21 +1253,33 @@ def merge_scene_clips(clip_paths, durations, output_dir, fps, width, height, fad
     level = 0
     while len(items) > fan_in:
         merged = []
+        group_starts = list(range(0, len(items), fan_in))
         log(f'Crossfade pass {level + 1}: {len(items)} segments in groups of up to {fan_in}')
-        for group_index, start in enumerate(range(0, len(items), fan_in)):
+        for group_index, start in enumerate(group_starts):
             group = items[start:start + fan_in]
             group_duration = sum(item['duration'] for item in group)
             is_final_group = start + len(group) == len(items)
+            progress_label = (
+                f'Crossfade pass {level + 1} group {group_index + 1}/{len(group_starts)} '
+                f'({len(group)} segments)'
+            )
+            log(f'{progress_label}: starting, about {format_duration(group_duration)} of video')
             path = merge_dir / f'pass-{level:02d}-{group_index:04d}.mp4'
             if len(group) > 1:
-                merge_xfade_batch(group, path, fade, fps, width, height, is_final_group)
+                merge_xfade_batch(
+                    group, path, fade, fps, width, height, is_final_group,
+                    progress_label=progress_label,
+                )
             merged.append({'path': path if len(group) > 1 else group[0]['path'], 'duration': group_duration})
         items = merged
         level += 1
 
     log(f'Final crossfade pass: {len(items)} segments')
     output = output_dir / 'visual_only.mp4'
-    merge_xfade_batch(items, output, fade, fps, width, height, final_group=True)
+    merge_xfade_batch(
+        items, output, fade, fps, width, height, final_group=True,
+        progress_label=f'Final crossfade ({len(items)} segments)',
+    )
     return output
 
 
@@ -1247,7 +1309,7 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
             vf = (f'scale={motion_width}:{motion_height}:force_original_aspect_ratio=increase,'
                   f'crop={motion_width}:{motion_height},'
                   f'format=yuv420p,zoompan=z=\'{factor}\':x=\'iw/2-iw/zoom/2\':y=\'ih/2-ih/zoom/2\':'
-                  f'd={frames}:s={width}x{height}:fps={fps}')
+                  f'd=1:s={width}x{height}:fps={fps}')
         else:
             vf = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}'
         if scene_style == 'horror':
@@ -1261,25 +1323,6 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
         if dest.exists() and stamp.exists():
             cached_signature = stamp.read_text()
             reusable = cached_signature == signature
-            # Keep already-rendered 720p clips from the previous 4x overscan renderer.
-            if not reusable and zoom and (width, height) == VIDEO_RESOLUTIONS['720p']:
-                old_motion_width, old_motion_height = width * 4, height * 4
-                old_vf = (
-                    f'scale={old_motion_width}:{old_motion_height}:force_original_aspect_ratio=increase,'
-                    f'crop={old_motion_width}:{old_motion_height},'
-                    f'zoompan=z=\'{factor}\':x=\'iw/2-iw/zoom/2\':y=\'ih/2-ih/zoom/2\':'
-                    f'd={frames}:s={width}x{height}:fps={fps}'
-                )
-                if scene_style == 'horror':
-                    old_vf += ',eq=brightness=-0.035:saturation=0.80,vignette=PI/4'
-                elif scene_style == 'joy':
-                    old_vf += ',eq=brightness=0.018:saturation=1.23:contrast=1.04'
-                old_vf += ',setsar=1,format=yuv420p'
-                old_signature = hashlib.sha256(json.dumps(
-                    [str(sc['image']), os.path.getmtime(sc['image']), seconds, fps, width, height, old_vf],
-                    sort_keys=True,
-                ).encode()).hexdigest()
-                reusable = cached_signature == old_signature
             if reusable:
                 log_progress('Rendering', i+1, len(scenes), progress_started)
                 continue

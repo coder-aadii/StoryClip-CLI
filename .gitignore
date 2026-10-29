@@ -23,6 +23,7 @@ outputs/
 
 # Machine-specific tools and agent configuration
 .local-bin/
+local/
 .agents/
 .aws/
 .codex/
