@@ -18,7 +18,9 @@ class RenderStyleTests(unittest.TestCase):
                 {'image': str(first_image), 'duration': 2.0, 'mood': 'horror', 'text': 'डर।'},
                 {'image': str(second_image), 'duration': 2.0, 'mood': 'joy', 'text': 'खुशी।'},
             ]
-            with patch.object(video_cli, 'run', return_value='') as run:
+            with patch.object(video_cli, 'run', return_value='') as run, \
+                    patch.object(video_cli, 'compose_avatar_scene_clips', return_value=([], {'blocks': []})), \
+                    patch.object(video_cli, 'merge_scene_clips', return_value=output / 'visual_only.mp4'):
                 video_cli.render(scenes, output / 'narration.wav', None, output, style=style)
 
             filters = []
@@ -30,12 +32,12 @@ class RenderStyleTests(unittest.TestCase):
     def test_auto_applies_each_scene_mood_and_keeps_smooth_alternating_zoom(self):
         first, second = self.render_filters('auto')
 
-        self.assertIn('scale=5120:2880:force_original_aspect_ratio=increase,crop=5120:2880', first)
+        self.assertIn('scale=1434:808:force_original_aspect_ratio=increase,crop=1434:808', first)
         self.assertIn("zoompan=z='1.0+0.12*((on/58)*(on/58)*(3-2*(on/58)))'", first)
         self.assertIn('brightness=-0.035:saturation=0.80,vignette=PI/4', first)
         self.assertNotIn('saturation=1.23', first)
 
-        self.assertIn('scale=5120:2880:force_original_aspect_ratio=increase,crop=5120:2880', second)
+        self.assertIn('scale=1434:808:force_original_aspect_ratio=increase,crop=1434:808', second)
         self.assertIn("zoompan=z='1.12-0.12*((on/47)*(on/47)*(3-2*(on/47)))'", second)
         self.assertIn('brightness=0.018:saturation=1.23:contrast=1.04', second)
         self.assertNotIn('vignette=PI/4', second)

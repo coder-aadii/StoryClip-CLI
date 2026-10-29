@@ -1,6 +1,6 @@
 {
   "name": "Facts Sun Le Bhai — animated narrator stickman",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "dimensions": [
     306,
     429
@@ -412,12 +412,62 @@
         "serious"
       ],
       "purpose": "Important qualification or scientific explanation"
+    },
+    {
+      "name": "pointing_left",
+      "file": "23_single pointing_left.png",
+      "size": [
+        1254,
+        1254
+      ],
+      "alpha_bbox": [
+        95,
+        31,
+        1192,
+        1222
+      ],
+      "sha256": "c4d2d2b3d15400d1cf657f5d79cab7d50043d2366f106aef4b8a3e60624f13fb",
+      "variant_type": "directional_pose",
+      "tags": [
+        "pointing",
+        "left",
+        "presenting"
+      ],
+      "pointer_direction": "left",
+      "recommended_position": "right",
+      "purpose": "Direct attention to content on the left while the avatar stands on the right"
+    },
+    {
+      "name": "pointing_top_left",
+      "file": "24_pointing_top_left.png",
+      "size": [
+        1254,
+        1254
+      ],
+      "alpha_bbox": [
+        17,
+        23,
+        1178,
+        1228
+      ],
+      "sha256": "0cc04a5445df172467a01e8d90cbe5823b83c6b15a74ba09dd286ec13be22c08",
+      "variant_type": "directional_pose",
+      "tags": [
+        "pointing",
+        "top_left",
+        "presenting"
+      ],
+      "pointer_direction": "top_left",
+      "recommended_position": "right",
+      "purpose": "Direct attention to content above and to the left while the avatar stands on the right"
     }
   ],
   "notes": [
-    "Original 12 sprite art preserved from v1 (canvases normalized to 306×429); additional 10 are composited expression/effect variants derived from original poses, not independently redrawn full-body characters.",
-    "These static sprites do not provide automatic lip sync or emotional timing; runtime must map approved emotional beats to word-aligned timestamps.",
+    "Asset source, creator attribution, and license terms are not recorded in this manifest; confirm and document permission before publishing or distributing videos that use these poses.",
+    "Poses 01–22 use 306×429 canvases.",
+    "Poses 23–24 are 1254×1254 directional assets; use alpha_bbox when normalizing their perceived display size and bottom alignment with the 306×429 poses.",
+    "These static sprites do not provide automatic lip sync or emotional timing; runtime controls pose selection, placement, and timing.",
     "Use neutral/explaining for baseline; limit angry/shocked/celebrating reactions to appropriate beats.",
-    "Ensure common canvas, SHA-256, and alpha when importing; do not automatically replace an installed manifest without checking existing schema."
+    "Validate canvas size, SHA-256, and alpha bounds when importing assets."
   ]
 }
