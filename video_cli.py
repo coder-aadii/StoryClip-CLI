@@ -67,6 +67,7 @@ EDGE_TTS_PROFILES = {
 EDGE_TTS_PROVIDERS = (
     'edge', 'edge-female', 'edge-femail', 'edge-male', 'edge-male-energetic',
 )
+GEMINI_TTS_VOICE = 'Puck'
 TTS_CACHE_VERSION = 1
 RENDER_FINGERPRINT_VERSION = 2
 SEGMENT_RENDER_VERSION = 1
@@ -343,9 +344,9 @@ def compose_narration(content, title, language, outro_profile):
     return intro, outro, '\n\n'.join((intro, content.strip(), outro))
 
 
-def build_video_scenes(content, title, language, theme, outro_profile):
+def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge'):
     intro, outro, full_narration = compose_narration(content, title, language, outro_profile)
-    content_scenes = plan_scenes(content, language, theme)
+    content_scenes = plan_scenes(content, language, theme, tts_provider)
     for scene in content_scenes:
         scene['kind'] = 'content'
     scenes = [
@@ -550,18 +551,32 @@ def sentences(text):
     return [s.strip() for s in chunks if s.strip()]
 
 
-def plan_scenes(narration, language, theme):
-    log('Planning scene imagery using Gemini')
-    units=sentences(narration)
-    # group short sentences into approximate 10s segments; long sentences remain intact.
+def narration_groups(narration, language, tts_provider='edge'):
+    # Planning estimates only; measured speech still determines scene timing.
+    # Keep sentences intact, even when a single sentence exceeds the target.
+    paragraph_mode = tts_provider == 'gemini'
+    target, maximum = (30, 45) if paragraph_mode else (7.5, 12.5)
+    paragraphs = re.split(r'\n\s*\n', narration) if paragraph_mode else [narration]
     wps=1.75 if language=='hi' else 2.25
-    groups=[]; buf=[]; secs=0
-    for s in units:
-        est=max(1.5,len(s.split())/wps)
-        if buf and (secs+est>12.5 or secs>=7.5):
-            groups.append(' '.join(buf));buf=[];secs=0
-        buf.append(s);secs+=est
-    if buf:groups.append(' '.join(buf))
+    groups=[]
+    for paragraph in paragraphs:
+        buf=[]; secs=0
+        for s in sentences(paragraph):
+            est=max(1.5,len(s.split())/wps)
+            if buf and (secs+est>maximum or secs>=target):
+                groups.append(' '.join(buf));buf=[];secs=0
+            buf.append(s);secs+=est
+        if buf:groups.append(' '.join(buf))
+    return groups
+
+
+def scene_chunking(tts_provider):
+    return 'gemini-paragraph-v1' if tts_provider == 'gemini' else 'short-v1'
+
+
+def plan_scenes(narration, language, theme, tts_provider='edge'):
+    log('Planning scene imagery using Gemini')
+    groups=narration_groups(narration, language, tts_provider)
     query_text='\n'.join(f'{i}: {g[:420]}' for i,g in enumerate(groups))
     prompt=(f'For every numbered narration segment, suggest one visually relevant Pexels PHOTO search query and one restrained avatar cue. '
             f'Narration language {language}; theme: {theme}. Queries MUST be ENGLISH, photographic, concrete, '
@@ -692,7 +707,7 @@ def gemini_speak(text, dest, language, mood='neutral'):
     response=client.models.generate_content(
         model=os.getenv('GEMINI_TTS_MODEL','gemini-2.5-flash-preview-tts'),
         contents=f'{delivery} Speak the following words verbatim in {"Hindi" if language=="hi" else "English"}; do not read the directions aloud. Script: {text}',
-        config=types.GenerateContentConfig(response_modalities=['AUDIO'],speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name='Kore')))))
+        config=types.GenerateContentConfig(response_modalities=['AUDIO'],speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=GEMINI_TTS_VOICE)))))
     parts=response.candidates[0].content.parts
     blob=next((p.inline_data for p in parts if getattr(p,'inline_data',None)),None)
     if not blob or not blob.data:raise RuntimeError('Gemini returned no audio')
@@ -799,7 +814,7 @@ def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voi
     edge = edge_tts_settings(language)
     gemini = {
         'model': os.getenv('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
-        'voice': 'Kore',
+        'voice': GEMINI_TTS_VOICE,
         'delivery_prompt_version': 1,
     }
     if provider == 'indic-parler':
@@ -1857,6 +1872,11 @@ def main():
                 f'Saved project language is {project.get("language")!r}, but --language is {args.language!r}; '
                 'use a new --output directory for a different language'
             )
+        if project.get('scene_chunking', 'short-v1') != scene_chunking(args.tts):
+            raise RuntimeError(
+                'Saved project uses a different narration chunk size; use a new --output directory '
+                'for Gemini paragraph narration or short-scene narration'
+            )
         if args.script:
             if current_script != project.get('content_narration', project.get('narration', '')).strip():
                 raise RuntimeError(
@@ -1905,13 +1925,14 @@ def main():
         project['status'] = 'in_progress'
         project['intermediates'] = 'keep' if args.keep_intermediates else 'delete_on_success'
         project['outro_profile'] = args.outro
+        project['scene_chunking'] = scene_chunking(args.tts)
         project['output_slug'] = args.output.name
         project['language']=args.language
         project['theme']=args.theme or project.get('theme') or 'cinematic landscape'
         project['music_moods']=[x.strip() for x in args.music_mood.split(',')] if args.music_mood else project.get('music_moods',['cinematic'])
         project['content_narration'] = project['narration'].strip()
         scenes, intro, outro, video_narration = build_video_scenes(
-            project['content_narration'], project.get('title'), args.language, project['theme'], args.outro
+            project['content_narration'], project.get('title'), args.language, project['theme'], args.outro, args.tts
         )
         project['intro_narration'] = intro
         project['outro_narration'] = outro
@@ -1938,7 +1959,7 @@ def main():
             deficit=content_target-content_length
             log(f'Script shorter than target by {deficit:.1f}s; requesting meaningful continuation {attempt+1}/2')
             extra=expand_narration(project,deficit)
-            added=plan_scenes(extra,project['language'],project['theme'])
+            added=plan_scenes(extra,project['language'],project['theme'],args.tts)
             for scene in added:
                 scene['kind'] = 'content'
             scenes[-1:-1] = added

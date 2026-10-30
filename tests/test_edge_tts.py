@@ -70,6 +70,14 @@ class EdgeTtsTests(unittest.TestCase):
         )
         self.assertNotEqual(video_cli.cache_key(edge), video_cli.cache_key(male))
 
+    def test_gemini_uses_puck_voice_in_cache_identity(self):
+        gemini = video_cli.tts_cache_identity('A story.', 'en', 'gemini', 'neutral')
+        auto = video_cli.tts_cache_identity('A story.', 'en', 'auto', 'neutral')
+
+        self.assertEqual(video_cli.GEMINI_TTS_VOICE, 'Puck')
+        self.assertEqual(gemini['settings']['voice'], 'Puck')
+        self.assertEqual(auto['settings']['gemini']['voice'], 'Puck')
+
 
 if __name__ == '__main__':
     unittest.main()
