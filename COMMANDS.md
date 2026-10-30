@@ -42,6 +42,8 @@ The output defaults to 720p. Set `--resolution 1080p` or `--resolution 2160p` fo
 
 Use either `--idea` or `--script`.
 
+Use `--tts gemini` for Puck narration in larger paragraph-sized chunks (roughly 30–45 seconds, respecting blank-line paragraph breaks and whole sentences). Each image and subtitle cue lasts for the whole audio chunk; intro/outro remain separate. `--tts auto` and other providers keep the shorter scene layout. Choose a fresh `--output` directory for this mode when resuming an older Gemini project or changing from another provider.
+
 After a verified successful render, the output keeps `final.mp4`, `subtitles.srt`, and `project.json`. Add `--keep-intermediates` before success to retain generated scripts, images, speech and music caches, and clips. Failed runs keep their work files. Extra files you put in the output directory are preserved.
 
 Rendering caches one finished video segment per scene, including its avatar and incoming crossfade. A retry reuses valid segments, and the final video join copies their H.264 streams without another video encode. Scene boundaries are rounded on the cumulative narration timeline to avoid timing drift.
