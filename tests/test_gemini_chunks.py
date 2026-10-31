@@ -10,14 +10,14 @@ import video_cli
 
 
 class GeminiChunkTests(unittest.TestCase):
-    def test_larger_chunks_preserve_sentences_and_other_provider_behavior(self):
+    def test_gemini_visual_scenes_stay_short_and_preserve_sentences(self):
         for language, ending in [('en', '.'), ('hi', '।')]:
             with self.subTest(language=language):
                 sentence = ' '.join(['word'] * 20) + ending
                 narration = ' '.join([sentence] * 12)
                 short = video_cli.narration_groups(narration, language)
                 longer = video_cli.narration_groups(narration, language, 'gemini')
-                self.assertLess(len(longer), len(short))
+                self.assertEqual(len(longer), len(short))
                 self.assertEqual(' '.join(longer), narration)
                 self.assertTrue(all(chunk.endswith(ending) for chunk in longer))
                 wps = 1.75 if language == 'hi' else 2.25
@@ -33,7 +33,7 @@ class GeminiChunkTests(unittest.TestCase):
         )
         self.assertEqual(video_cli.narration_groups('', 'en', 'gemini'), [])
 
-    def test_cli_saves_and_resumes_paragraph_plan_and_rejects_legacy_layout(self):
+    def test_cli_resumes_aligned_scene_plan_and_rejects_legacy_layout(self):
         narration = ' '.join(['This is a sentence with enough words for the scene planner.'] * 16)
         with tempfile.TemporaryDirectory() as directory:
             script = Path(directory) / 'input.txt'
@@ -48,7 +48,7 @@ class GeminiChunkTests(unittest.TestCase):
                 video_cli.main()
                 manifest = output / 'project.json'
                 project = json.loads(manifest.read_text(encoding='utf-8'))
-                self.assertEqual(project['scene_chunking'], 'gemini-paragraph-v1')
+                self.assertEqual(project['scene_chunking'], 'gemini-aligned-short-v2')
                 self.assertEqual(project['scenes'][0]['kind'], 'intro')
                 self.assertEqual(project['scenes'][-1]['kind'], 'outro')
                 self.assertEqual(

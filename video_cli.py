@@ -1,44 +1,35 @@
 #!/usr/bin/env python3
 """Standalone terminal-only photo-video generator; explicit music-rights approval required."""
 import argparse
-import asyncio
-import array
 import errno
 import hashlib
-import io
 import json
 import math
 import os
 import random
 import re
 import shutil
-import subprocess
 import sys
 import time
 import unicodedata
-import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
+from media_runtime import SESSION, log, log_progress, progress_message, format_duration, run
+from tts_service import (
+    EDGE_TTS_PROVIDERS, INDIC_VOICES, NARRATION_TRIM_VERSION,
+    cache_key, write_json_atomic, tts_cache_identity, narrate,
+)
 from PIL import Image, ImageFilter, ImageStat
 
 load_dotenv()
-SESSION = requests.Session()
-SESSION.headers.update({'User-Agent': 'storyclip-cli/0.1'})
 
-INDIC_VOICES = ('Divya', 'Rohit', 'Aman', 'Rani')
-INDIC_LANGUAGES = {'hi', 'hin', 'hindi', 'hi-in'}
-INDIC_HEALTH_TIMEOUT = 5
-INDIC_SYNTH_TIMEOUT = 300
+
 DEFAULT_BGM_VOLUME = 0.09
 BGM_LOOP_CROSSFADE_SECONDS = 1.0
-NARRATION_TRIM_VERSION = 1
-NARRATION_EDGE_PADDING_SECONDS = 0.09
-NARRATION_SILENCE_THRESHOLD_DBFS = -48.0
-NARRATION_SILENCE_WINDOW_SECONDS = 0.01
 BUILTIN_BGM_FILES = {
     'science': 'science_explanation_theme_1.mp3',
     'horror': 'horror_theme_1.mp3',
@@ -47,28 +38,6 @@ BUILTIN_BGM_FILES = {
     'technology': 'technology_theme_1.mp3',
 }
 BUILTIN_BGM_DIR = Path(__file__).resolve().parent / 'storage/BGM'
-EDGE_TTS_PROFILES = {
-    'female': {
-        'voices': {'hi': 'hi-IN-SwaraNeural', 'en': 'en-US-AriaNeural'},
-        'pitch': '-3Hz',
-        'rate': '+20%',
-    },
-    'male': {
-        'voices': {'hi': 'hi-IN-MadhurNeural', 'en': 'en-US-GuyNeural'},
-        'pitch': '-10Hz',
-        'rate': '+18%',
-    },
-    'male-energetic': {
-        'voices': {'hi': 'hi-IN-MadhurNeural', 'en': 'en-US-GuyNeural'},
-        'pitch': '-2Hz',
-        'rate': '+35%',
-    },
-}
-EDGE_TTS_PROVIDERS = (
-    'edge', 'edge-female', 'edge-femail', 'edge-male', 'edge-male-energetic',
-)
-GEMINI_TTS_VOICE = 'Puck'
-TTS_CACHE_VERSION = 1
 RENDER_FINGERPRINT_VERSION = 2
 SEGMENT_RENDER_VERSION = 1
 PROJECT_FORMAT_VERSION = 2
@@ -102,103 +71,6 @@ AVATAR_CUES = {
 _AVATAR_MANIFEST_CACHE = None
 
 
-def log(s):
-    print(f'[storyclip] {s}', flush=True)
-
-
-def format_duration(seconds):
-    seconds = max(0, int(round(seconds)))
-    minutes, seconds = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f'{hours:d}h {minutes:02d}m {seconds:02d}s'
-    if minutes:
-        return f'{minutes:d}m {seconds:02d}s'
-    return f'{seconds:d}s'
-
-
-def progress_message(label, completed, total, started, now=None):
-    now = time.monotonic() if now is None else now
-    total = max(1, total)
-    completed = min(max(0, completed), total)
-    fraction = completed / total
-    width = 20
-    filled = round(width * fraction)
-    bar = '#' * filled + '-' * (width - filled)
-    elapsed = max(0, now - started)
-    if completed >= total:
-        timing = f'elapsed {format_duration(elapsed)}'
-    elif completed:
-        eta = elapsed / completed * (total - completed)
-        timing = f'ETA {format_duration(eta)}'
-    else:
-        timing = 'ETA calculating'
-    return f'{label} [{bar}] {fraction * 100:5.1f}% ({completed}/{total}) {timing}'
-
-
-def log_progress(label, completed, total, started):
-    log(progress_message(label, completed, total, started))
-
-
-def run(cmd, progress_label=None, progress_duration=None):
-    if progress_label:
-        return run_with_progress(cmd, progress_label, progress_duration)
-    p = subprocess.run([str(x) for x in cmd], capture_output=True, text=True)
-    if p.returncode:
-        status = f'exit code {p.returncode}'
-        if p.returncode < 0:
-            status = f'terminated by signal {-p.returncode}'
-        details = p.stderr[-3000:].strip() or 'No diagnostic text was returned by the process.'
-        raise RuntimeError(
-            f"Command failed ({status}): {' '.join(str(x) for x in cmd[:8])}\n{details}"
-        )
-    return p.stdout.strip()
-
-
-def run_with_progress(cmd, label, duration):
-    """Stream FFmpeg's machine-readable progress while retaining error details."""
-    command = [str(x) for x in cmd]
-    total_seconds = max(1, round(float(duration or 1)))
-    started = time.monotonic()
-    process = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
-    )
-    output_tail = ''
-    progress_fields = {}
-    last_reported = -1
-    report_step = max(1, total_seconds // 20)
-    for line in process.stdout:
-        output_tail = (output_tail + line)[-3000:]
-        if '=' not in line:
-            continue
-        key, value = line.rstrip().split('=', 1)
-        progress_fields[key] = value
-        if key != 'progress':
-            continue
-        timestamp = progress_fields.get('out_time_us') or progress_fields.get('out_time_ms')
-        if timestamp and timestamp.isdigit():
-            completed = min(total_seconds - 1, int(timestamp) // 1_000_000)
-            if completed > last_reported and (
-                last_reported < 0 or completed - last_reported >= report_step
-            ):
-                log_progress(label, completed, total_seconds, started)
-                last_reported = completed
-        progress_fields.clear()
-
-    return_code = process.wait()
-    if return_code:
-        status = f'exit code {return_code}'
-        if return_code < 0:
-            status = f'terminated by signal {-return_code}'
-        details = output_tail.strip() or 'No diagnostic text was returned by the process.'
-        raise RuntimeError(
-            f"Command failed ({status}): {' '.join(command[:8])}\n{details}"
-        )
-    log_progress(label, total_seconds, total_seconds, started)
-    return ''
-
-
 def save_json(path, obj):
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding='utf-8')
 
@@ -217,7 +89,7 @@ def gemini_json(prompt):
     from google import genai
     from google.genai import types
     client=genai.Client(api_key=os.environ['GEMINI_API_KEY'])
-    model=os.getenv('GEMINI_TEXT_MODEL','gemini-2.5-flash')
+    model=os.getenv('GEMINI_TEXT_MODEL','gemini-3-flash-preview')
     last=None
     for attempt in range(3):
         try:
@@ -225,7 +97,10 @@ def gemini_json(prompt):
             return json.loads(response.text)
         except Exception as e:
             last=e
-            if attempt<2: time.sleep(2**attempt)
+            if attempt<2:
+                delay = 2**attempt
+                log(f'Gemini text model ({model}) returned {e}; retrying {attempt+2}/3 in {delay}s...')
+                time.sleep(delay)
     raise RuntimeError(f'Gemini text generation failed: {last}')
 
 
@@ -240,8 +115,11 @@ def narrative_from_idea(idea, language, minutes, outro_profile='default'):
     prompt=(f'Create an engaging spoken explainer script for an educational photo-based video. '
             f'Language: {"Hindi in Devanagari" if language=="hi" else "English"}. Idea: {idea}. '
             f'Approximate MAIN CONTENT length: {content_minutes:.2f} minutes (~{words} words, prioritize natural pacing). '
-            'A required intro and outro will be added separately, so do not write a greeting, channel call-to-action, or sign-off. '
-            'Explain the topic clearly for a general audience with a compelling opening, coherent progression, concrete examples, and a concise takeaway. '
+            'Structure the script with three distinct sections: '
+            '1. Proper Intro Setup: Do not jump directly into technical points. Build up the main topic and premise first with an intriguing hook, relatable scenario, or thought-provoking question to captivate the audience. '
+            '2. Core Explanation: Unfold the subject clearly with coherent progression, vivid examples, and authentic storytelling emotion. '
+            '3. Strong Conclusion: Do not end abruptly. Provide a well-rounded conclusion that summarizes the key takeaway and delivers a thoughtful closing perspective before wrapping up. '
+            'Separate channel greetings and subscribe calls-to-action are added as separate video bookends, so do not include channel welcomes or subscribe sign-offs. '
             'For science, history, or factual topics, distinguish established facts from uncertainty and do not invent claims. '
             'Satisfy the requested length without repetition. No time codes, camera directions, headings, or music directions. '
             'Return JSON object with keys "title" (short text), "output_slug" (2-8 lowercase ASCII words '
@@ -252,7 +130,7 @@ def narrative_from_idea(idea, language, minutes, outro_profile='default'):
     return result
 
 
-def source_identity(kind, text, language, minutes=None, theme=None, music_mood=None, outro_profile='default'):
+def source_identity(kind, text, language, minutes=None, theme=None, music_mood=None, outro_profile='default', title=None, intro_text=None):
     normalized = re.sub(r'\s+', ' ', text.strip())
     settings = {
         'kind': kind,
@@ -261,6 +139,8 @@ def source_identity(kind, text, language, minutes=None, theme=None, music_mood=N
         'theme': theme or None,
         'music_mood': music_mood or None,
         'outro': outro_profile,
+        'title': title or None,
+        'intro_text': intro_text or None,
     }
     serialized = json.dumps(
         {'text': normalized, **settings}, ensure_ascii=False, sort_keys=True, separators=(',', ':')
@@ -311,8 +191,27 @@ def classify_mood(text):
     return 'neutral'
 
 
+def script_title_from_llm(content, language):
+    """Derive a natural, concise spoken title for a script when none is provided."""
+    prompt = (
+        f'Given this video script in {"Hindi" if language == "hi" else "English"}, return JSON with key "title": '
+        f'a concise, natural topic title (2 to 5 words) in {"Hindi (Devanagari)" if language == "hi" else "English"} '
+        f'suitable for spoken introduction. Script excerpt:\n{content[:600]}'
+    )
+    try:
+        data = gemini_json(prompt)
+        candidate = str(data.get('title', '')).strip()
+        if candidate and len(candidate) >= 2:
+            return candidate
+    except Exception:
+        pass
+    return None
+
+
 def intro_narration(title, language):
-    display_title = re.sub(r'[_-]+', ' ', str(title or '')).strip() or ('आज का विषय' if language == 'hi' else "today's topic")
+    display_title = re.sub(r'[_-]+', ' ', str(title or '')).strip()
+    if not display_title or (language == 'hi' and re.match(r'^[a-zA-Z0-9_\-\s]+$', display_title)):
+        display_title = 'आज का विशेष विषय' if language == 'hi' else "today's topic"
     if language == 'hi':
         return f'नमस्कार दोस्तों! आज के वीडियो में हम जानेंगे: {display_title}। चलिए शुरू करते हैं।'
     return f"Hello everyone! In today's video, we're exploring {display_title}. Let's begin."
@@ -338,14 +237,14 @@ def outro_narration(profile, language):
             'See you in the next video. Bye!')
 
 
-def compose_narration(content, title, language, outro_profile):
-    intro = intro_narration(title, language)
+def compose_narration(content, title, language, outro_profile, intro_text=None):
+    intro = intro_text.strip() if intro_text else intro_narration(title, language)
     outro = outro_narration(outro_profile, language)
     return intro, outro, '\n\n'.join((intro, content.strip(), outro))
 
 
-def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge'):
-    intro, outro, full_narration = compose_narration(content, title, language, outro_profile)
+def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None):
+    intro, outro, full_narration = compose_narration(content, title, language, outro_profile, intro_text)
     content_scenes = plan_scenes(content, language, theme, tts_provider)
     for scene in content_scenes:
         scene['kind'] = 'content'
@@ -554,9 +453,8 @@ def sentences(text):
 def narration_groups(narration, language, tts_provider='edge'):
     # Planning estimates only; measured speech still determines scene timing.
     # Keep sentences intact, even when a single sentence exceeds the target.
-    paragraph_mode = tts_provider == 'gemini'
-    target, maximum = (30, 45) if paragraph_mode else (7.5, 12.5)
-    paragraphs = re.split(r'\n\s*\n', narration) if paragraph_mode else [narration]
+    target, maximum = 7.5, 12.5
+    paragraphs = re.split(r'\n\s*\n', narration) if tts_provider == 'gemini' else [narration]
     wps=1.75 if language=='hi' else 2.25
     groups=[]
     for paragraph in paragraphs:
@@ -571,7 +469,7 @@ def narration_groups(narration, language, tts_provider='edge'):
 
 
 def scene_chunking(tts_provider):
-    return 'gemini-paragraph-v1' if tts_provider == 'gemini' else 'short-v1'
+    return 'gemini-aligned-short-v2' if tts_provider == 'gemini' else 'short-v1'
 
 
 def plan_scenes(narration, language, theme, tts_provider='edge'):
@@ -674,317 +572,6 @@ def gather_images(scenes, theme, folder):
             sc['image']=str(dest);sc['credit']=fb['credit'];sc['pexels_url']=fb['pexels_url'];sc['fallback']=True
         log_progress('Images', i+1, len(scenes), progress_started)
     return scenes
-
-
-def edge_tts_settings(language, provider='edge'):
-    if provider not in EDGE_TTS_PROVIDERS:
-        raise ValueError(f'Unsupported Edge TTS provider: {provider}')
-    profile_name = {
-        'edge-male': 'male',
-        'edge-male-energetic': 'male-energetic',
-    }.get(provider, 'female')
-    try:
-        profile = EDGE_TTS_PROFILES[profile_name]
-        voice = profile['voices'][language]
-    except KeyError as ex:
-        raise ValueError(f'Unsupported Edge TTS language: {language}') from ex
-    return {'voice': voice, 'pitch': profile['pitch'], 'rate': profile['rate']}
-
-
-async def edge_speak(text, dest, language, mood='neutral', provider='edge'):
-    # Edge offers voice/rate/pitch control but not reliable acting instructions.
-    import edge_tts
-    settings = edge_tts_settings(language, provider)
-    await edge_tts.Communicate(text, **settings).save(str(dest))
-
-
-def gemini_speak(text, dest, language, mood='neutral'):
-    # Gemini generateContent single-speaker API. SDK response may be WAV or raw PCM.
-    from google import genai
-    from google.genai import types
-    client=genai.Client(api_key=os.environ['GEMINI_API_KEY'])
-    delivery = {'horror': 'Narrate with restrained dread, uneasy pauses and rising tension. Sound like a human telling a frightening story, not an announcer.', 'joy': 'Narrate warmly, smiling, animated and full of genuine delight.', 'neutral': 'Narrate naturally with authentic storytelling emotion and varied intonation.'}.get(mood,'Narrate naturally.')
-    response=client.models.generate_content(
-        model=os.getenv('GEMINI_TTS_MODEL','gemini-2.5-flash-preview-tts'),
-        contents=f'{delivery} Speak the following words verbatim in {"Hindi" if language=="hi" else "English"}; do not read the directions aloud. Script: {text}',
-        config=types.GenerateContentConfig(response_modalities=['AUDIO'],speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=GEMINI_TTS_VOICE)))))
-    parts=response.candidates[0].content.parts
-    blob=next((p.inline_data for p in parts if getattr(p,'inline_data',None)),None)
-    if not blob or not blob.data:raise RuntimeError('Gemini returned no audio')
-    data=blob.data
-    if data[:4]==b'RIFF':dest.write_bytes(data)
-    else:
-        with wave.open(str(dest),'wb') as f:
-            f.setnchannels(1);f.setsampwidth(2);f.setframerate(24000);f.writeframes(data)
-
-
-def validate_wav_bytes(data):
-    """Validate the raw WAV format returned by the local Indic service."""
-    if not isinstance(data, bytes) or len(data) < 44 or data[:4] != b'RIFF' or data[8:12] != b'WAVE':
-        raise RuntimeError('Indic Parler returned malformed audio: response is not a RIFF/WAVE file')
-    try:
-        with wave.open(io.BytesIO(data), 'rb') as wav:
-            if wav.getnchannels() < 1 or wav.getsampwidth() < 1 or wav.getframerate() < 1 or wav.getnframes() < 1:
-                raise RuntimeError('Indic Parler returned malformed audio: WAV has no playable frames')
-    except (EOFError, wave.Error) as ex:
-        raise RuntimeError(f'Indic Parler returned malformed audio: invalid WAV data ({ex})') from ex
-
-
-def validate_wav_file(path):
-    try:
-        with wave.open(str(path), 'rb') as wav:
-            return wav.getnchannels() >= 1 and wav.getsampwidth() >= 1 and wav.getframerate() >= 1 and wav.getnframes() >= 1
-    except (EOFError, OSError, wave.Error):
-        return False
-
-
-def response_error_detail(response):
-    try:
-        body = response.json()
-        if isinstance(body, dict) and body.get('detail'):
-            return str(body['detail'])
-    except (ValueError, requests.RequestException):
-        pass
-    text = getattr(response, 'text', '').strip()
-    return text[:500] if text else getattr(response, 'reason', 'unknown server error')
-
-
-def indic_parler_speak(text, dest, language, voice, base_url):
-    """Synthesize Hindi speech from the service's raw audio/wav response."""
-    narration = text.strip()
-    if not narration:
-        raise ValueError('Indic Parler narration text cannot be empty')
-    if len(narration) > 5000:
-        raise ValueError('Indic Parler narration text exceeds the service limit of 5000 characters')
-    if language.lower() not in INDIC_LANGUAGES:
-        raise ValueError('Indic Parler supports Hindi only (use --language hi)')
-    if voice not in INDIC_VOICES:
-        raise ValueError(f'Invalid Indic Parler voice {voice!r}; choose one of: {", ".join(INDIC_VOICES)}')
-
-    health_url = f"{base_url.rstrip('/')}/health"
-    try:
-        r = SESSION.get(health_url, timeout=INDIC_HEALTH_TIMEOUT)
-        r.raise_for_status()
-        health = r.json()
-        if not isinstance(health, dict) or health.get('status') != 'ok':
-            raise RuntimeError(f'Indic Parler health check returned an invalid response: {health!r}')
-    except requests.Timeout as ex:
-        raise RuntimeError(f'Indic Parler health check timed out after {INDIC_HEALTH_TIMEOUT}s: {ex}') from ex
-    except requests.RequestException as ex:
-        raise RuntimeError(f'Indic Parler health check failed: {ex}') from ex
-    except ValueError as ex:
-        raise RuntimeError(f'Indic Parler health check returned invalid JSON: {ex}') from ex
-
-    payload = {'text': narration, 'voice': voice, 'language': 'hi-IN'}
-    synth_url = f"{base_url.rstrip('/')}/synthesize"
-    try:
-        r = SESSION.post(synth_url, json=payload, timeout=INDIC_SYNTH_TIMEOUT)
-        r.raise_for_status()
-    except requests.Timeout as ex:
-        raise RuntimeError(f'Indic Parler synthesis request timed out after {INDIC_SYNTH_TIMEOUT}s: {ex}') from ex
-    except requests.HTTPError as ex:
-        response = ex.response if ex.response is not None else r
-        raise RuntimeError(f'Indic Parler synthesis failed (HTTP {response.status_code}): {response_error_detail(response)}') from ex
-    except requests.RequestException as ex:
-        raise RuntimeError(f'Indic Parler synthesis request failed: {ex}') from ex
-
-    content_type = r.headers.get('Content-Type', '').split(';', 1)[0].strip().lower()
-    if content_type != 'audio/wav':
-        raise RuntimeError(f'Indic Parler returned unexpected Content-Type {content_type or "<missing>"!r}; expected audio/wav')
-    validate_wav_bytes(r.content)
-
-    dest = Path(dest)
-    tmp = dest.with_name(dest.name + '.part')
-    try:
-        tmp.write_bytes(r.content)
-        os.replace(tmp, dest)
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voice=None):
-    identity = {
-        'version': TTS_CACHE_VERSION,
-        'text': text,
-        'language': language,
-        'provider': provider,
-        'mood': mood,
-        'output': {'format': 'wav', 'sample_rate': 24000, 'channels': 1},
-    }
-    edge = edge_tts_settings(language)
-    gemini = {
-        'model': os.getenv('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
-        'voice': GEMINI_TTS_VOICE,
-        'delivery_prompt_version': 1,
-    }
-    if provider == 'indic-parler':
-        identity['settings'] = {'base_url': indic_url.rstrip('/'), 'voice': indic_voice, 'language': 'hi-IN'}
-    elif provider in EDGE_TTS_PROVIDERS:
-        identity['settings'] = edge_tts_settings(language, provider)
-    elif provider == 'gemini':
-        identity['settings'] = gemini
-    elif provider == 'auto':
-        identity['settings'] = {'fallback_order': ['gemini', 'edge'], 'gemini': gemini, 'edge': edge}
-    else:
-        raise ValueError(f'Unsupported TTS provider: {provider}')
-    return identity
-
-
-def cache_key(identity):
-    serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
-    return hashlib.sha256(serialized).hexdigest()
-
-
-def tts_cache_hit(wav, metadata, identity, key):
-    if not wav.is_file() or not metadata.is_file() or not validate_wav_file(wav):
-        return False
-    try:
-        saved = json.loads(metadata.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return False
-    return saved.get('cache_key') == key and saved.get('identity') == identity
-
-
-def trim_wav_edge_silence(source, destination):
-    """Trim sustained silence at clip edges while preserving pauses inside speech."""
-    source = Path(source)
-    destination = Path(destination)
-    tmp = destination.with_name(destination.name + '.part')
-    try:
-        with wave.open(str(source), 'rb') as wav_in:
-            channels = wav_in.getnchannels()
-            sample_width = wav_in.getsampwidth()
-            sample_rate = wav_in.getframerate()
-            frame_count = wav_in.getnframes()
-            params = wav_in.getparams()
-            if wav_in.getcomptype() != 'NONE' or sample_width not in (1, 2, 3, 4):
-                raise RuntimeError(f'Unsupported narration WAV encoding in {source}')
-            pcm = wav_in.readframes(frame_count)
-
-        window_frames = max(1, round(sample_rate * NARRATION_SILENCE_WINDOW_SECONDS))
-        frame_width = channels * sample_width
-        max_amplitude = (1 << (sample_width * 8 - 1)) - 1
-        threshold = max_amplitude * (10 ** (NARRATION_SILENCE_THRESHOLD_DBFS / 20))
-        first_active = None
-        last_active = None
-        for block_start in range(0, frame_count, window_frames):
-            block_end = min(frame_count, block_start + window_frames)
-            byte_start = block_start * frame_width
-            byte_end = block_end * frame_width
-            block = pcm[byte_start:byte_end]
-            if sample_width == 1:
-                peak = max((abs(value - 128) for value in block), default=0)
-            elif sample_width in (2, 4):
-                samples = array.array('h' if sample_width == 2 else 'i')
-                samples.frombytes(block)
-                if sys.byteorder != 'little':
-                    samples.byteswap()
-                peak = max((abs(value) for value in samples), default=0)
-            else:
-                peak = 0
-                for offset in range(0, len(block), 3):
-                    value = int.from_bytes(block[offset:offset + 3], 'little', signed=True)
-                    peak = max(peak, abs(value))
-            if peak > threshold:
-                if first_active is None:
-                    first_active = block_start
-                last_active = block_end
-
-        padding = round(sample_rate * NARRATION_EDGE_PADDING_SECONDS)
-        if first_active is None:
-            start_frame, end_frame = 0, frame_count
-        else:
-            start_frame = max(0, first_active - padding)
-            end_frame = min(frame_count, last_active + padding)
-        trimmed_pcm = pcm[start_frame * frame_width:end_frame * frame_width]
-
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        with wave.open(str(tmp), 'wb') as wav_out:
-            wav_out.setnchannels(params.nchannels)
-            wav_out.setsampwidth(params.sampwidth)
-            wav_out.setframerate(params.framerate)
-            wav_out.setcomptype(params.comptype, params.compname)
-            wav_out.writeframes(trimmed_pcm)
-        if not validate_wav_file(tmp):
-            raise RuntimeError(f'Unable to prepare trimmed narration WAV: {destination}')
-        os.replace(tmp, destination)
-        return (frame_count - (end_frame - start_frame)) / sample_rate
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-def write_json_atomic(path, obj):
-    tmp = path.with_name(path.name + '.part')
-    try:
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding='utf-8')
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None):
-    folder.mkdir(parents=True,exist_ok=True)
-    durations=[]
-    progress_started = time.monotonic()
-    for i,sc in enumerate(scenes):
-        mood = sc.get('mood', 'neutral')
-        identity = tts_cache_identity(sc['text'], language, provider, mood, indic_url, indic_voice)
-        key = cache_key(identity)
-        wav = folder / f'{i:04}_{key[:20]}.wav'
-        metadata = wav.with_suffix('.json')
-        if not tts_cache_hit(wav, metadata, identity, key):
-            log(f'TTS scene {i+1}/{len(scenes)} using {provider}')
-            tmp_wav = wav.with_name(wav.stem + '.part.wav')
-            tmp_mp3 = wav.with_name(wav.stem + '.part.mp3')
-            resolved_provider = provider
-            try:
-                if provider == 'gemini':
-                    gemini_speak(sc['text'], tmp_wav, language, mood)
-                elif provider == 'auto':
-                    try:
-                        gemini_speak(sc['text'], tmp_wav, language, mood)
-                        resolved_provider = 'gemini'
-                    except Exception as ex:
-                        tmp_wav.unlink(missing_ok=True)
-                        resolved_provider = 'edge'
-                        log(f'Gemini TTS unavailable, falling back to Edge: {ex}')
-                        asyncio.run(edge_speak(sc['text'], tmp_mp3, language, mood))
-                        run(['ffmpeg','-y','-loglevel','error','-i',tmp_mp3,'-ar','24000','-ac','1',tmp_wav])
-                elif provider in EDGE_TTS_PROVIDERS:
-                    asyncio.run(edge_speak(sc['text'], tmp_mp3, language, mood, provider))
-                    run(['ffmpeg','-y','-loglevel','error','-i',tmp_mp3,'-ar','24000','-ac','1',tmp_wav])
-                elif provider == 'indic-parler':
-                    # Explicit Indic selection is strict: failures propagate; no other provider is called.
-                    indic_parler_speak(sc['text'], tmp_wav, language, indic_voice, indic_url)
-                else:
-                    raise ValueError(f'Unsupported TTS provider: {provider}')
-
-                if not validate_wav_file(tmp_wav):
-                    raise RuntimeError(f'{resolved_provider} TTS produced an invalid or empty WAV file')
-                os.replace(tmp_wav, wav)
-                write_json_atomic(metadata, {
-                    'cache_key': key,
-                    'identity': identity,
-                    'resolved_provider': resolved_provider,
-                })
-            finally:
-                tmp_wav.unlink(missing_ok=True)
-                tmp_mp3.unlink(missing_ok=True)
-        trimmed_wav = wav.with_name(f'trim_v{NARRATION_TRIM_VERSION}_{wav.stem}.wav')
-        if not validate_wav_file(trimmed_wav):
-            removed = trim_wav_edge_silence(wav, trimmed_wav)
-            if removed >= 0.05:
-                log(f'Trimmed {removed:.2f}s of edge silence from narration scene {i+1}')
-        durations.append(audio_duration(trimmed_wav))
-        sc['voice']=str(trimmed_wav)
-        sc['duration']=durations[-1]
-        log_progress('Narration', i+1, len(scenes), progress_started)
-    # concat PCM WAV files via ffmpeg concat demuxer
-    manifest=folder/'narration_concat.txt'
-    manifest.write_text(''.join("file '"+Path(sc['voice']).name+"'\n" for sc in scenes),encoding='utf-8')
-    output=folder/'narration.wav'
-    run(['ffmpeg','-y','-loglevel','error','-f','concat','-safe','0','-i',manifest,'-ar','24000','-ac','1',output])
-    return output
 
 
 def make_srt(scenes, output):
@@ -1661,10 +1248,14 @@ def render_fingerprint(args):
         **requested_render_settings(args),
         'version': RENDER_FINGERPRINT_VERSION,
         'tts_identity': tts_cache_identity('', args.language, args.tts, 'neutral', args.indic_url, args.indic_voice),
-        'gemini_text_model': os.getenv('GEMINI_TEXT_MODEL', 'gemini-2.5-flash'),
+        'gemini_text_model': os.getenv('GEMINI_TEXT_MODEL', 'gemini-3-flash-preview'),
         'avatar_plan_version': AVATAR_PLAN_VERSION,
         'narration_trim_version': NARRATION_TRIM_VERSION,
     }
+    if args.tts == 'gemini':
+        from speech_alignment import alignment_settings
+        settings['alignment'] = alignment_settings()
+        settings['scene_chunking'] = scene_chunking(args.tts)
     return cache_key(settings)
 
 
@@ -1692,7 +1283,7 @@ def validate_final_video(path, expected_duration, width, height):
 MANAGED_ARTIFACTS = {
     '.': re.compile(r'(?:script\.txt|video_script\.txt|avatar_plan\.json|visual_only\.(?:mp4|sha256|part\.mp4)|final\.part\.mp4|project\.json\.part)'),
     'images': re.compile(r'(?:fallback_[0-9]+|scene_[0-9a-f]{20})\.jpg'),
-    'voice': re.compile(r'(?:narration\.wav|narration_concat\.txt|[0-9]{4}_[0-9a-f]{20}\.(?:wav|json|part\.wav|part\.mp3|json\.part)|trim_v[0-9]+_[0-9]{4}_[0-9a-f]{20}\.wav(?:\.part)?)'),
+    'voice': re.compile(r'(?:alignment_[0-9a-f]{64}\.json(?:\.part)?|narration\.wav|narration_concat\.txt|[0-9]{4}_[0-9a-f]{20}\.(?:wav|json|part\.wav|part\.mp3|json\.part)|trim_v[0-9]+_[0-9]{4}_[0-9a-f]{20}\.wav(?:\.part)?)'),
     'music': re.compile(r'(?:credits\.json|jamendo_[0-9]+\.mp3)'),
     'clips': re.compile(r'(?:[0-9]{4}\.(?:mp4|sha256|part\.mp4)|segments\.ffconcat)'),
     'clips/avatar': re.compile(r'[0-9]{4}\.(?:mp4|sha256|part\.mp4)'),
@@ -1760,8 +1351,8 @@ def build_parser():
     source.add_argument('--script',type=Path,help='Existing UTF-8 script file')
     p.add_argument('--language',choices=['hi','en'],default='hi')
     p.add_argument('--minutes',type=float,default=2,help='Approximate length for idea-to-script')
-    p.add_argument('--tts',choices=[*EDGE_TTS_PROVIDERS,'gemini','auto','indic-parler'],default='edge',
-                   help='Narrator: Edge female/male/energetic profile, Gemini, Gemini-to-Edge fallback, or Indic Parler')
+    p.add_argument('--tts',choices=[*EDGE_TTS_PROVIDERS,'gemini','gemini-tts','puck','auto','indic-parler'],default='edge',
+                   help='Narrator: Edge female/male/energetic profile, Gemini Puck (or gemini-tts/puck), Gemini-to-Edge fallback, or Indic Parler')
     p.add_argument('--indic-url',help='Base URL for Indic Parler TTS service',default=os.getenv('INDIC_PARLER_URL','http://127.0.0.1:8765'))
     p.add_argument('--indic-voice',choices=INDIC_VOICES,help='Voice for Indic Parler TTS',default=os.getenv('INDIC_PARLER_VOICE','Divya'))
     p.add_argument('--output',type=Path,help='Output directory (default: outputs/<story-name>)')
@@ -1779,12 +1370,16 @@ def build_parser():
     p.add_argument('--bgm-file',type=Path,help='Local music file for which you have suitable video-sync rights')
     p.add_argument('--bgm-volume',type=float,default=DEFAULT_BGM_VOLUME,help='BGM linear volume from 0 to 1 (default: 0.08)')
     p.add_argument('--duration-tolerance',type=float,default=0.07,help='Fractional tolerance for idea-generated videos')
+    p.add_argument('--title', help='Video title override (used for intro narration and project metadata)')
+    p.add_argument('--intro-text', help='Custom spoken intro narration text override')
     p.add_argument('--outro', choices=OUTRO_PROFILES, default='default',
                    help='Mandatory outro profile (default: generic; facts-sun-le-bhai adds the branded Hindi/English call-to-action)')
     return p
 
 
 def validate_cli_args(p, args):
+    if args.tts in ('puck', 'gemini-tts'):
+        args.tts = 'gemini'
     if args.tts == 'indic-parler':
         if args.indic_voice not in INDIC_VOICES:
             p.error(f'--indic-voice must be one of: {", ".join(INDIC_VOICES)}')
@@ -1797,6 +1392,9 @@ def validate_cli_args(p, args):
 
 def require_pipeline_prerequisites(p, args):
     check_tools()
+    if args.tts == 'gemini' and not args.dry_run:
+        from speech_alignment import require_alignment
+        require_alignment()
     if not os.getenv('GEMINI_API_KEY'):
         p.error('Missing GEMINI_API_KEY in .env')
     if not args.dry_run and not os.getenv('PEXELS_API_KEY'):
@@ -1820,6 +1418,8 @@ def main():
         args.theme,
         args.music_mood,
         args.outro,
+        args.title,
+        args.intro_text,
     )
     requested_fingerprint = render_fingerprint(args)
     prepared_project = None
@@ -1836,13 +1436,14 @@ def main():
                 suggested_slug = prepared_project.get('output_slug') or prepared_project.get('title')
                 fallback_seed = args.idea
             else:
+                title = args.title or args.script.stem
                 prepared_project = {
-                    'title': args.script.stem,
+                    'title': title,
                     'narration': current_script,
                     'theme': args.theme or 'cinematic nature landscape',
                     'music_moods': ['cinematic'],
                 }
-                suggested_slug = args.script.stem
+                suggested_slug = args.title or args.script.stem
                 fallback_seed = current_script
             slug = safe_output_slug(suggested_slug, fallback_seed)
             args.output = available_output_path(output_base, slug)
@@ -1875,7 +1476,7 @@ def main():
         if project.get('scene_chunking', 'short-v1') != scene_chunking(args.tts):
             raise RuntimeError(
                 'Saved project uses a different narration chunk size; use a new --output directory '
-                'for Gemini paragraph narration or short-scene narration'
+                'for Gemini narration with aligned short visual scenes'
             )
         if args.script:
             if current_script != project.get('content_narration', project.get('narration', '')).strip():
@@ -1919,7 +1520,17 @@ def main():
         elif args.idea:
             project=narrative_from_idea(args.idea,args.language,args.minutes,args.outro)
         else:
-            project={'title':args.script.stem,'narration':current_script,'theme':args.theme or 'cinematic nature landscape','music_moods':['cinematic']}
+            title = args.title
+            if not title:
+                first_line = current_script.split('\n')[0].strip()
+                if first_line.startswith(('#', 'Title:', 'title:', 'शीर्षक:')):
+                    title = re.sub(r'^(?:#+|[Tt]itle:|शीर्षक:)\s*', '', first_line).strip()
+                    current_script = '\n'.join(current_script.split('\n')[1:]).strip()
+                elif os.getenv('GEMINI_API_KEY'):
+                    title = script_title_from_llm(current_script, args.language)
+                if not title:
+                    title = args.script.stem
+            project={'title':title,'narration':current_script,'theme':args.theme or 'cinematic nature landscape','music_moods':['cinematic']}
         project['source'] = identity
         project['format_version'] = PROJECT_FORMAT_VERSION
         project['status'] = 'in_progress'
@@ -1932,7 +1543,8 @@ def main():
         project['music_moods']=[x.strip() for x in args.music_mood.split(',')] if args.music_mood else project.get('music_moods',['cinematic'])
         project['content_narration'] = project['narration'].strip()
         scenes, intro, outro, video_narration = build_video_scenes(
-            project['content_narration'], project.get('title'), args.language, project['theme'], args.outro, args.tts
+            project['content_narration'], project.get('title'), args.language, project['theme'], args.outro, args.tts,
+            args.intro_text,
         )
         project['intro_narration'] = intro
         project['outro_narration'] = outro

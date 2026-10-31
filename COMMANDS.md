@@ -36,13 +36,27 @@ The output defaults to 720p. Set `--resolution 1080p` or `--resolution 2160p` fo
 ./run_video.sh \
   --script my_script.txt \
   --language hi \
-  --tts edge \
+  --intro-text "तो क्या हाल है दोस्तों! आज के वीडियो में हम जानेंगे कि सोना इतना कीमती क्यों है। चलिए शुरू करते हैं।" \
+  --tts edge-male \
   --output outputs/my-video
 ```
 
+Use `--title` to supply a clean spoken title, or `--intro-text` for custom spoken intro narration. For Hindi scripts without `--title`, the intro automatically generates a natural topic title and avoids speaking raw code/ASCII filenames.
+
 Use either `--idea` or `--script`.
 
-Use `--tts gemini` for Puck narration in larger paragraph-sized chunks (roughly 30–45 seconds, respecting blank-line paragraph breaks and whole sentences). Each image and subtitle cue lasts for the whole audio chunk; intro/outro remain separate. `--tts auto` and other providers keep the shorter scene layout. Choose a fresh `--output` directory for this mode when resuming an older Gemini project or changing from another provider.
+Use `--tts gemini` (or `--tts puck`) for Puck narration (upbeat and lively male voice preset) in continuous chunks targeting 60–90 seconds. Images still switch at short visual scene boundaries (roughly 10 seconds), with local alignment setting their actual timing and SRT cues. Intro/outro remain separate. `--tts auto` and other providers retain per-scene synthesis. Choose a fresh `--output` directory for an older Gemini project; its saved scene layout will be rejected without modifying its media.
+
+Before using Gemini narration, install the local alignment dependencies:
+
+```bash
+.venv/bin/python -m pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/python -m pip install -r requirements-alignment.txt
+```
+
+The first alignment downloads a multilingual Whisper `small` model and runs on CPU. Set `STORYCLIP_ALIGN_MODEL=medium` for a larger model if needed (more memory, download, and processing time). Audio is processed locally. An alignment failure retains synthesized chunks; retrying reuses them. `--dry-run` does not load the alignment model, but still calls Gemini for scene planning. Add `--keep-intermediates` to retain both speech and alignment caches after a successful render.
+
+Gemini TTS automatically cools down and retries up to four times after a `429 RESOURCE_EXHAUSTED` response. The retry delay reported by Google is honored with a small safety buffer. If the available quota remains exhausted, rerun the same command later; completed scene audio is reused.
 
 After a verified successful render, the output keeps `final.mp4`, `subtitles.srt`, and `project.json`. Add `--keep-intermediates` before success to retain generated scripts, images, speech and music caches, and clips. Failed runs keep their work files. Extra files you put in the output directory are preserved.
 
