@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 import requests
 
 import video_cli
+import tts_service
 
 
 def wav_bytes(frames=240):
@@ -37,9 +38,9 @@ class IndicParlerClientTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / 'speech.wav'
-            with patch.object(video_cli.SESSION, 'get', return_value=health) as get, \
-                    patch.object(video_cli.SESSION, 'post', return_value=synthesis) as post:
-                video_cli.indic_parler_speak(
+            with patch.object(tts_service.SESSION, 'get', return_value=health) as get, \
+                    patch.object(tts_service.SESSION, 'post', return_value=synthesis) as post:
+                tts_service.indic_parler_speak(
                     'नमस्ते दुनिया।', destination, 'hi', 'Divya', 'http://127.0.0.1:8765/'
                 )
 
@@ -54,10 +55,10 @@ class IndicParlerClientTests(unittest.TestCase):
 
     def test_unavailable_server_reports_health_error(self):
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(video_cli.SESSION, 'get', side_effect=requests.ConnectionError('connection refused')):
+                patch.object(tts_service.SESSION, 'get', side_effect=requests.ConnectionError('connection refused')):
             destination = Path(directory) / 'speech.wav'
             with self.assertRaisesRegex(RuntimeError, 'health check failed.*connection refused'):
-                video_cli.indic_parler_speak(
+                tts_service.indic_parler_speak(
                     'नमस्ते।', destination, 'hi', 'Divya', 'http://127.0.0.1:8765'
                 )
             self.assertFalse(destination.exists())
@@ -65,11 +66,11 @@ class IndicParlerClientTests(unittest.TestCase):
     def test_synthesis_timeout_reports_actual_phase(self):
         health = response(json_body={'status': 'ok'})
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(video_cli.SESSION, 'get', return_value=health), \
-                patch.object(video_cli.SESSION, 'post', side_effect=requests.Timeout('read timed out')):
+                patch.object(tts_service.SESSION, 'get', return_value=health), \
+                patch.object(tts_service.SESSION, 'post', side_effect=requests.Timeout('read timed out')):
             destination = Path(directory) / 'speech.wav'
             with self.assertRaisesRegex(RuntimeError, 'synthesis request timed out after 300s.*read timed out'):
-                video_cli.indic_parler_speak(
+                tts_service.indic_parler_speak(
                     'नमस्ते।', destination, 'hi', 'Rohit', 'http://127.0.0.1:8765'
                 )
             self.assertFalse(destination.exists())
@@ -82,12 +83,12 @@ class IndicParlerClientTests(unittest.TestCase):
             '500 Server Error', response=rejected
         )
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(video_cli.SESSION, 'get', return_value=health), \
-                patch.object(video_cli.SESSION, 'post', return_value=rejected):
+                patch.object(tts_service.SESSION, 'get', return_value=health), \
+                patch.object(tts_service.SESSION, 'post', return_value=rejected):
             destination = Path(directory) / 'speech.wav'
             with self.assertRaisesRegex(
                     RuntimeError, 'HTTP 500.*Speech generation failed: model unavailable'):
-                video_cli.indic_parler_speak(
+                tts_service.indic_parler_speak(
                     'नमस्ते।', destination, 'hi', 'Rani', 'http://127.0.0.1:8765'
                 )
             self.assertFalse(destination.exists())
@@ -96,24 +97,24 @@ class IndicParlerClientTests(unittest.TestCase):
         health = response(json_body={'status': 'ok'})
         malformed = response(content=b'not a wave file', content_type='audio/wav')
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(video_cli.SESSION, 'get', return_value=health), \
-                patch.object(video_cli.SESSION, 'post', return_value=malformed):
+                patch.object(tts_service.SESSION, 'get', return_value=health), \
+                patch.object(tts_service.SESSION, 'post', return_value=malformed):
             destination = Path(directory) / 'speech.wav'
             with self.assertRaisesRegex(RuntimeError, 'malformed audio.*RIFF/WAVE'):
-                video_cli.indic_parler_speak(
+                tts_service.indic_parler_speak(
                     'नमस्ते।', destination, 'hi', 'Aman', 'http://127.0.0.1:8765'
                 )
             self.assertFalse(destination.exists())
 
     def test_invalid_voice_and_unsupported_language_fail_before_network(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(video_cli.SESSION, 'get') as get:
+        with tempfile.TemporaryDirectory() as directory, patch.object(tts_service.SESSION, 'get') as get:
             destination = Path(directory) / 'speech.wav'
             with self.assertRaisesRegex(ValueError, 'Invalid Indic Parler voice'):
-                video_cli.indic_parler_speak(
+                tts_service.indic_parler_speak(
                     'नमस्ते।', destination, 'hi', 'Unknown', 'http://127.0.0.1:8765'
                 )
             with self.assertRaisesRegex(ValueError, 'supports Hindi only'):
-                video_cli.indic_parler_speak(
+                tts_service.indic_parler_speak(
                     'Hello.', destination, 'en', 'Divya', 'http://127.0.0.1:8765'
                 )
             get.assert_not_called()
@@ -126,43 +127,43 @@ class IndicParlerCacheTests(unittest.TestCase):
 
     def run_narrate(self, scenes, folder, voice='Divya', side_effect=None):
         speaker = side_effect or self.synthesize
-        with patch.object(video_cli, 'indic_parler_speak', side_effect=speaker) as speak, \
-                patch.object(video_cli, 'audio_duration', return_value=0.01), \
-                patch.object(video_cli, 'run', return_value=''):
-            video_cli.narrate(
+        with patch.object(tts_service, 'indic_parler_speak', side_effect=speaker) as speak, \
+                patch.object(tts_service, 'audio_duration', return_value=0.01), \
+                patch.object(tts_service, 'run', return_value=''):
+            tts_service.narrate(
                 scenes, folder, 'hi', 'indic-parler', 'http://127.0.0.1:8765', voice
             )
         return speak
 
     def test_cache_identity_covers_provider_language_and_synthesis_settings(self):
-        base = video_cli.tts_cache_identity(
+        base = tts_service.tts_cache_identity(
             'एक कहानी।', 'hi', 'indic-parler', 'neutral',
             'http://127.0.0.1:8765', 'Rani',
         )
         variants = [
-            video_cli.tts_cache_identity(
+            tts_service.tts_cache_identity(
                 'दूसरी कहानी।', 'hi', 'indic-parler', 'neutral',
                 'http://127.0.0.1:8765', 'Rani',
             ),
-            video_cli.tts_cache_identity(
+            tts_service.tts_cache_identity(
                 'एक कहानी।', 'hi', 'indic-parler', 'neutral',
                 'http://127.0.0.1:8765', 'Divya',
             ),
-            video_cli.tts_cache_identity(
+            tts_service.tts_cache_identity(
                 'एक कहानी।', 'hi', 'indic-parler', 'neutral',
                 'http://127.0.0.1:9999', 'Rani',
             ),
-            video_cli.tts_cache_identity(
+            tts_service.tts_cache_identity(
                 'एक कहानी।', 'en', 'indic-parler', 'neutral',
                 'http://127.0.0.1:8765', 'Rani',
             ),
-            video_cli.tts_cache_identity('एक कहानी।', 'hi', 'edge', 'neutral'),
-            video_cli.tts_cache_identity(
+            tts_service.tts_cache_identity('एक कहानी।', 'hi', 'edge', 'neutral'),
+            tts_service.tts_cache_identity(
                 'एक कहानी।', 'hi', 'indic-parler', 'joy',
                 'http://127.0.0.1:8765', 'Rani',
             ),
         ]
-        keys = {video_cli.cache_key(base), *(video_cli.cache_key(item) for item in variants)}
+        keys = {tts_service.cache_key(base), *(tts_service.cache_key(item) for item in variants)}
         self.assertEqual(len(keys), 7)
 
     def test_cache_reuse_and_text_and_voice_invalidation(self):
@@ -196,13 +197,13 @@ class IndicParlerCacheTests(unittest.TestCase):
         scenes = [{'text': 'पहला।'}, {'text': 'दूसरा।'}]
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            with patch.object(video_cli, 'indic_parler_speak', side_effect=fail_second), \
-                    patch.object(video_cli, 'edge_speak') as edge, \
-                    patch.object(video_cli, 'gemini_speak') as gemini, \
-                    patch.object(video_cli, 'audio_duration', return_value=0.01), \
-                    patch.object(video_cli, 'run', return_value=''):
+            with patch.object(tts_service, 'indic_parler_speak', side_effect=fail_second), \
+                    patch.object(tts_service, 'edge_speak') as edge, \
+                    patch.object(tts_service, 'gemini_speak') as gemini, \
+                    patch.object(tts_service, 'audio_duration', return_value=0.01), \
+                    patch.object(tts_service, 'run', return_value=''):
                 with self.assertRaisesRegex(RuntimeError, 'actual backend failure'):
-                    video_cli.narrate(
+                    tts_service.narrate(
                         scenes, folder, 'hi', 'indic-parler', 'http://127.0.0.1:8765', 'Divya'
                     )
                 edge.assert_not_called()

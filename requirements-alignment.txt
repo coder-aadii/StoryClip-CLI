@@ -1,0 +1,4 @@
+# Local forced alignment for --tts gemini; optional for other speech providers.
+stable-ts==2.19.1
+torch>=2.5,<2.6
+torchaudio>=2.5,<2.6

@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import video_cli
+import tts_service
 
 
 def write_test_wav(path, segments, sample_rate=24000):
@@ -39,7 +40,7 @@ class NarrationSilenceTests(unittest.TestCase):
                 (0.5, 0), (1.0, 5000), (0.5, 0), (1.0, 5000), (0.7, 0),
             ])
 
-            removed = video_cli.trim_wav_edge_silence(source, trimmed)
+            removed = tts_service.trim_wav_edge_silence(source, trimmed)
 
             self.assertAlmostEqual(removed, 1.02, delta=0.03)
             self.assertAlmostEqual(wav_seconds(trimmed), 2.68, delta=0.03)
@@ -57,7 +58,7 @@ class NarrationSilenceTests(unittest.TestCase):
             trimmed = Path(directory) / 'trimmed.wav'
             write_test_wav(source, [(0.8, 0)])
 
-            removed = video_cli.trim_wav_edge_silence(source, trimmed)
+            removed = tts_service.trim_wav_edge_silence(source, trimmed)
 
             self.assertEqual(removed, 0)
             self.assertAlmostEqual(wav_seconds(trimmed), 0.8, delta=0.001)
@@ -67,23 +68,23 @@ class NarrationSilenceTests(unittest.TestCase):
             folder = Path(directory) / 'voice'
             folder.mkdir()
             scene = {'text': 'A test narration.', 'mood': 'neutral'}
-            identity = video_cli.tts_cache_identity(scene['text'], 'en', 'edge-male', 'neutral')
-            key = video_cli.cache_key(identity)
+            identity = tts_service.tts_cache_identity(scene['text'], 'en', 'edge-male', 'neutral')
+            key = tts_service.cache_key(identity)
             raw = folder / f'0000_{key[:20]}.wav'
             metadata = raw.with_suffix('.json')
             write_test_wav(raw, [(0.5, 0), (1.0, 5000), (0.6, 0)])
             original_bytes = raw.read_bytes()
             metadata.write_text(json.dumps({'cache_key': key, 'identity': identity}), encoding='utf-8')
 
-            with patch.object(video_cli, 'edge_speak', new_callable=AsyncMock) as speak, \
-                    patch.object(video_cli, 'run') as run, \
-                    patch.object(video_cli, 'audio_duration', side_effect=wav_seconds):
-                narration = video_cli.narrate([scene], folder, 'en', 'edge-male')
+            with patch.object(tts_service, 'edge_speak', new_callable=AsyncMock) as speak, \
+                    patch.object(tts_service, 'run') as run, \
+                    patch.object(tts_service, 'audio_duration', side_effect=wav_seconds):
+                narration = tts_service.narrate([scene], folder, 'en', 'edge-male')
 
             speak.assert_not_called()
             self.assertEqual(raw.read_bytes(), original_bytes)
             self.assertTrue(Path(scene['voice']).is_file())
-            self.assertIn(f'trim_v{video_cli.NARRATION_TRIM_VERSION}', scene['voice'])
+            self.assertIn(f'trim_v{tts_service.NARRATION_TRIM_VERSION}', scene['voice'])
             self.assertLess(scene['duration'], wav_seconds(raw))
             manifest = folder / 'narration_concat.txt'
             self.assertIn(Path(scene['voice']).name, manifest.read_text(encoding='utf-8'))

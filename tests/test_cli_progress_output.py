@@ -39,6 +39,8 @@ class AutomaticOutputTests(unittest.TestCase):
 
         self.assertIn('"output_slug"', gemini.call_args.args[0])
         self.assertIn('lowercase ASCII', gemini.call_args.args[0])
+        self.assertIn('Proper Intro Setup', gemini.call_args.args[0])
+        self.assertIn('Strong Conclusion', gemini.call_args.args[0])
 
     def test_slug_is_sanitized_and_has_non_ascii_fallback(self):
         self.assertEqual(
@@ -93,6 +95,35 @@ class AutomaticOutputTests(unittest.TestCase):
                 planner.assert_not_called()
         finally:
             os.chdir(previous_directory)
+
+    def test_hindi_intro_avoids_raw_ascii_filename(self):
+        intro_from_stem = video_cli.intro_narration('gold_script', 'hi')
+        self.assertNotIn('gold', intro_from_stem)
+        self.assertNotIn('script', intro_from_stem)
+        self.assertIn('आज का विशेष विषय', intro_from_stem)
+
+        intro_from_hindi = video_cli.intro_narration('सोने का रहस्य', 'hi')
+        self.assertIn('सोने का रहस्य', intro_from_hindi)
+
+    def test_build_video_scenes_accepts_custom_intro_text(self):
+        custom = 'तो क्या हाल है दोस्तों! आज हम जानेंगे कि सोना इतना कीमती क्यों है।'
+        scenes, intro, outro, full = video_cli.build_video_scenes(
+            'यह मुख्य कहानी है।', 'gold_script', 'hi', 'gold', 'default', 'edge',
+            intro_text=custom,
+        )
+        self.assertEqual(scenes[0]['text'], custom)
+        self.assertEqual(intro, custom)
+        self.assertTrue(full.startswith(custom))
+
+    def test_cli_accepts_title_and_intro_text_flags(self):
+        parser = video_cli.build_parser()
+        args = parser.parse_args([
+            '--script', 'gold.txt',
+            '--title', 'सोने का रहस्य',
+            '--intro-text', 'कस्टम परिचय',
+        ])
+        self.assertEqual(args.title, 'सोने का रहस्य')
+        self.assertEqual(args.intro_text, 'कस्टम परिचय')
 
 
 if __name__ == '__main__':
