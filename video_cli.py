@@ -490,7 +490,8 @@ def plan_scenes(narration, language, theme, tts_provider='edge'):
         subset=groups[offset:offset+35]
         local='\n'.join(f'{offset+i}: {g[:420]}' for i,g in enumerate(subset))
         data=gemini_json(prompt.split('Segments:\n')[0]+'Segments:\n'+local)
-        for x in data.get('queries',[]):
+        queries = data.get('queries', []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        for x in queries:
             if isinstance(x,dict) and str(x.get('id','')).isdigit():
                 cue = x.get('avatar_cue')
                 mapping[int(x['id'])] = {
@@ -1247,7 +1248,9 @@ def render_fingerprint(args):
     settings = {
         **requested_render_settings(args),
         'version': RENDER_FINGERPRINT_VERSION,
-        'tts_identity': tts_cache_identity('', args.language, args.tts, 'neutral', args.indic_url, args.indic_voice),
+        'tts_identity': tts_cache_identity('', args.language, args.tts, 'neutral', args.indic_url, args.indic_voice,
+                                           getattr(args, 'voicestudio_url', None), getattr(args, 'voice_sample', None),
+                                           getattr(args, 'voicestudio_speed', None)),
         'gemini_text_model': os.getenv('GEMINI_TEXT_MODEL', 'gemini-3-flash-preview'),
         'avatar_plan_version': AVATAR_PLAN_VERSION,
         'narration_trim_version': NARRATION_TRIM_VERSION,
@@ -1351,10 +1354,14 @@ def build_parser():
     source.add_argument('--script',type=Path,help='Existing UTF-8 script file')
     p.add_argument('--language',choices=['hi','en'],default='hi')
     p.add_argument('--minutes',type=float,default=2,help='Approximate length for idea-to-script')
-    p.add_argument('--tts',choices=[*EDGE_TTS_PROVIDERS,'gemini','gemini-tts','puck','auto','indic-parler'],default='edge',
-                   help='Narrator: Edge female/male/energetic profile, Gemini Puck (or gemini-tts/puck), Gemini-to-Edge fallback, or Indic Parler')
+    p.add_argument('--tts',choices=[*EDGE_TTS_PROVIDERS,'gemini','gemini-tts','puck','auto','indic-parler','voicestudio'],default='edge',
+                   help='Narrator: Edge female/male/energetic profile, Gemini Puck (or gemini-tts/puck), Gemini-to-Edge fallback, Indic Parler, or local VoiceStudio')
     p.add_argument('--indic-url',help='Base URL for Indic Parler TTS service',default=os.getenv('INDIC_PARLER_URL','http://127.0.0.1:8765'))
     p.add_argument('--indic-voice',choices=INDIC_VOICES,help='Voice for Indic Parler TTS',default=os.getenv('INDIC_PARLER_VOICE','Divya'))
+    p.add_argument('--voicestudio-url',help='Base URL for local VoiceStudio TTS service',default=os.getenv('VOICESTUDIO_URL','http://127.0.0.1:38123'))
+    p.add_argument('--voice-sample',type=Path,help='Reference audio file (.wav) for VoiceStudio voice cloning')
+    p.add_argument('--voicestudio-speed',type=float,default=float(os.getenv('VOICESTUDIO_SPEED','1.15')),
+                   help='Speech rate multiplier for local VoiceStudio TTS (default: 1.15 for brisk, natural speech pace)')
     p.add_argument('--output',type=Path,help='Output directory (default: outputs/<story-name>)')
     p.add_argument('--keep-intermediates',action='store_true',help='Retain generated scripts, media caches, and clips after a successful render')
     p.add_argument('--theme',help='English Pexels theme search override')
@@ -1388,6 +1395,12 @@ def validate_cli_args(p, args):
             p.error('--indic-url must be an http(s) base URL without query parameters or fragments')
         if args.language != 'hi':
             p.error('--tts indic-parler supports only --language hi')
+    if args.tts == 'voicestudio':
+        parsed = urlparse(args.voicestudio_url)
+        if parsed.scheme not in ('http', 'https') or not parsed.netloc or parsed.params or parsed.query or parsed.fragment:
+            p.error('--voicestudio-url must be an http(s) base URL without query parameters or fragments')
+        if args.voice_sample and not args.voice_sample.is_file():
+            p.error(f'--voice-sample file does not exist: {args.voice_sample}')
 
 
 def require_pipeline_prerequisites(p, args):
@@ -1558,7 +1571,10 @@ def main():
         log(f'Dry run: {len(project["scenes"])} planned scenes with mandatory intro/outro and avatar states in {meta}');return
     scenes=project['scenes']
     gather_images(scenes,project['theme'],args.output/'images');write_json_atomic(meta,project)
-    voice=narrate(scenes,args.output/'voice',project['language'],args.tts,args.indic_url,args.indic_voice)
+    narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
+    if args.tts == 'voicestudio':
+        narrate_args.extend([getattr(args, 'voicestudio_url', None), getattr(args, 'voice_sample', None), getattr(args, 'voicestudio_speed', None)])
+    voice = narrate(*narrate_args)
     length=make_srt(scenes,args.output/'subtitles.srt')
     project['avatar_plan'] = build_avatar_plan(scenes)
     write_json_atomic(meta,project)
@@ -1585,7 +1601,10 @@ def main():
             (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
             (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
             gather_images(scenes,project['theme'],args.output/'images')
-            voice=narrate(scenes,args.output/'voice',project['language'],args.tts,args.indic_url,args.indic_voice)
+            narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
+            if args.tts == 'voicestudio':
+                narrate_args.extend([getattr(args, 'voicestudio_url', None), getattr(args, 'voice_sample', None), getattr(args, 'voicestudio_speed', None)])
+            voice = narrate(*narrate_args)
             length=make_srt(scenes,args.output/'subtitles.srt')
             content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
             project['avatar_plan'] = build_avatar_plan(scenes)

@@ -216,7 +216,8 @@ def indic_parler_speak(text, dest, language, voice, base_url):
         tmp.unlink(missing_ok=True)
 
 
-def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voice=None):
+def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voice=None,
+                       voicestudio_url=None, voice_sample=None, voicestudio_speed=None):
     identity = {
         'version': TTS_CACHE_VERSION,
         'text': text,
@@ -233,6 +234,9 @@ def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voi
     }
     if provider == 'indic-parler':
         identity['settings'] = {'base_url': indic_url.rstrip('/'), 'voice': indic_voice, 'language': 'hi-IN'}
+    elif provider == 'voicestudio':
+        from voicestudio_provider import voicestudio_cache_identity
+        identity['settings'] = voicestudio_cache_identity(text, language, mood, voicestudio_url, voice_sample, speed=voicestudio_speed)
     elif provider in EDGE_TTS_PROVIDERS:
         identity['settings'] = edge_tts_settings(language, provider)
     elif provider == 'gemini':
@@ -336,13 +340,15 @@ def write_json_atomic(path, obj):
         tmp.unlink(missing_ok=True)
 
 
-def narrate_units(scenes, folder, language, provider, indic_url=None, indic_voice=None):
+def narrate_units(scenes, folder, language, provider, indic_url=None, indic_voice=None,
+                  voicestudio_url=None, voice_sample=None, voicestudio_speed=None):
     folder.mkdir(parents=True,exist_ok=True)
     durations=[]
     progress_started = time.monotonic()
     for i,sc in enumerate(scenes):
         mood = sc.get('mood', 'neutral')
-        identity = tts_cache_identity(sc['text'], language, provider, mood, indic_url, indic_voice)
+        identity = tts_cache_identity(sc['text'], language, provider, mood, indic_url, indic_voice,
+                                      voicestudio_url, voice_sample, voicestudio_speed)
         key = cache_key(identity)
         wav = folder / f'{i:04}_{key[:20]}.wav'
         metadata = wav.with_suffix('.json')
@@ -370,6 +376,9 @@ def narrate_units(scenes, folder, language, provider, indic_url=None, indic_voic
                 elif provider == 'indic-parler':
                     # Explicit Indic selection is strict: failures propagate; no other provider is called.
                     indic_parler_speak(sc['text'], tmp_wav, language, indic_voice, indic_url)
+                elif provider == 'voicestudio':
+                    from voicestudio_provider import voicestudio_speak
+                    voicestudio_speak(sc['text'], tmp_wav, language, mood, voicestudio_url, voice_sample, speed=voicestudio_speed)
                 else:
                     raise ValueError(f'Unsupported TTS provider: {provider}')
 
@@ -421,9 +430,11 @@ def speech_chunks(scenes, language):
     return groups
 
 
-def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None):
+def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None,
+            voicestudio_url=None, voice_sample=None, voicestudio_speed=None):
     if provider != 'gemini':
-        return narrate_units(scenes, folder, language, provider, indic_url, indic_voice)
+        return narrate_units(scenes, folder, language, provider, indic_url, indic_voice,
+                             voicestudio_url, voice_sample, voicestudio_speed)
 
     from speech_alignment import align_scenes, require_alignment
     require_alignment()

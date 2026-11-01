@@ -82,4 +82,32 @@ ln -sf "$(.venv/bin/python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_f
 
 Rerun the same command with the same `--output` path and the same idea or script. An incomplete run reuses available work. A completed run with matching settings reports the existing video without provider calls. Use a new output directory if you change TTS, music, resolution, FPS, style, zoom, or other render settings. Passing `--keep-intermediates` after a cleaned run cannot restore deleted files.
 
+## VoiceStudio (Local TTS & Voice Cloning)
+
+Run VoiceStudio locally for unlimited offline speech synthesis and zero-shot voice cloning. Model checkpoints and caches reside in `/home/rails/Work/AI-Models`.
+
+Start the service daemon:
+```bash
+./services/voicestudio/run_server.sh
+```
+
+Generate video with standard VoiceStudio narrator:
+```bash
+./run_video.sh \
+  --idea "The mysteries of ancient deep ocean trenches" \
+  --language en \
+  --tts voicestudio \
+  --output outputs/ocean-trenches
+```
+
+Zero-shot voice cloning using a reference WAV sample:
+```bash
+./run_video.sh \
+  --script my_story.txt \
+  --language hi \
+  --tts voicestudio \
+  --voice-sample "/home/rails/Work/AI-Models/voicestudio/voices/sample.wav" \
+  --output outputs/cloned-story
+```
+
 The finished video is saved as `outputs/<name>/final.mp4`; subtitles are in `outputs/<name>/subtitles.srt`.

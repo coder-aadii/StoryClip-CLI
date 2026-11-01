@@ -2,7 +2,7 @@
 
 Standalone **Python CLI**, no frontend or StoryWeaver dependency.
 
-`video_cli.py` coordinates planning and rendering. `tts_service.py` owns speech providers, retries, caches, and audio preparation. `speech_alignment.py` aligns Gemini speech locally; `media_runtime.py` provides shared subprocess/progress helpers.
+`video_cli.py` coordinates planning and rendering. `tts_service.py` owns speech providers, retries, caches, and audio preparation. `voicestudio_provider.py` provides decoupled local VoiceStudio speech synthesis and voice cloning. `speech_alignment.py` aligns Gemini speech locally; `media_runtime.py` provides shared subprocess/progress helpers.
 
 **Flow:** idea → Gemini script → mandatory narrated intro and outro → sentence-aware ~10-second scenes → Gemini Pexels photo queries → themed fallback photos → Edge/Gemini/local Indic Parler narration → expression-stickman avatar → scene-timed SRT → bundled theme-matched BGM (or optional rights-cleared Jamendo track) → FFmpeg landscape MP4 with still-photo crossfades.
 
@@ -12,6 +12,7 @@ Standalone **Python CLI**, no frontend or StoryWeaver dependency.
 - API keys from Google AI Studio, Pexels and (optional) Jamendo.
 - Internet access for LLM, images, speech and music. Actual usage depends on provider quotas and account restrictions.
 - For `--tts indic-parler`, a running StoryWeaver Indic Parler service. Its verified API accepts Hindi only and returns a raw `audio/wav` body from `POST /synthesize`.
+- For `--tts voicestudio`, a local running VoiceStudio service daemon (`services/voicestudio/run_server.sh`) with weights stored under `/home/rails/Work/AI-Models`. Supports zero-shot voice cloning via `--voice-sample`.
 
 ## Installation
 ```bash
@@ -52,6 +53,11 @@ Use `./run_video.sh` to launch the CLI. It selects the local FFmpeg build with `
   --tts indic-parler --indic-url http://127.0.0.1:8765 --indic-voice Rani \
   --skip-music --output outputs/hindi_rani
 
+# Offline narration / voice cloning with local VoiceStudio service:
+./run_video.sh --idea 'A mystery in an abandoned lighthouse' --language en \
+  --tts voicestudio --voicestudio-url http://127.0.0.1:38123 \
+  --output outputs/voicestudio_demo
+
 # Force theme/music keywords:
 ./run_video.sh --script script.txt --language en --theme 'dark foggy forest' --music-mood 'horror,suspense' --output outputs/horror
 
@@ -80,6 +86,7 @@ After a successful render, a normal output contains only `final.mp4`, `subtitles
 - Edge TTS is an unofficial network-dependent service, not a guaranteed production API. `--tts edge-male` uses Madhur for Hindi (Guy for English) at pitch `-10Hz` and rate `+18%`; `--tts edge-male-energetic` uses the same voices at pitch `-2Hz` and rate `+35%`. `--tts edge-female` uses Swara for Hindi (Aria for English) at pitch `-3Hz` and rate `+20%`; the requested `edge-femail` spelling and the existing `edge` value are aliases for this female profile. `--tts gemini` (or `--tts puck`) uses Gemini's Puck voice preset (an upbeat and lively male voice); `--tts auto` attempts Puck then falls back to the female Edge profile. Defaults to Edge for minimal API cost.
 - Gemini TTS retries rate-limit (`429 RESOURCE_EXHAUSTED`) responses up to four times after the initial request. It honors Google's reported retry delay with a small safety buffer and uses increasing cooldowns when no delay is supplied. Completed scene audio remains cached, so restarting after an exhausted quota resumes at the first unfinished scene.
 - `--tts indic-parler` is Hindi-only and strict: it never falls back to Gemini or Edge. Supported voices are `Divya`, `Rohit`, `Aman`, and `Rani`. If the local service fails, the command reports that error; successfully completed scene audio remains cached for a retry with the same command.
+- `--tts voicestudio` communicates with a local VoiceStudio daemon (`--voicestudio-url`, default `http://127.0.0.1:38123`). It provides offline speech synthesis for both English and Hindi, and optional zero-shot voice cloning with `--voice-sample path/to/sample.wav`. Model checkpoints and caches are isolated under `/home/rails/Work/AI-Models`. Changing the reference audio file invalidates previous scene audio via SHA-256 sample fingerprinting.
 - Narration cache entries are keyed by the complete scene text, requested provider, voice, language, mood, endpoint/model settings, and output settings. Each entry also has matching JSON metadata and WAV validation, so changing a script scene or voice cannot reuse that scene's stale audio. Old filename-only cache files are ignored.
 - All TTS providers pass through the same narration preparation step. It trims only sustained near-silence at each clip edge, retaining about 90 ms at the start and end while preserving pauses within the clip. Versioned trimmed WAVs are derived from the original TTS cache, so rerunning an existing project recalculates narration timing, SRT, and visual transitions without synthesizing speech again.
 - `--style auto` grades every scene from its existing mood: fearful scenes use the darker horror treatment, joyful scenes use brighter color, and neutral scenes remain neutral. Explicit `--style horror`, `joy`, or `neutral` overrides all scenes. Styling is local FFmpeg work and makes no additional LLM or media-provider calls.
