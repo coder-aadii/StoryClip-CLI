@@ -112,8 +112,20 @@ def narrative_from_idea(idea, language, minutes, outro_profile='default'):
     log('Generating narration script with Gemini')
     content_minutes=max(0.25, minutes-reserved_intro_outro_seconds(outro_profile)/60)
     words=int(content_minutes*(145 if language=='hi' else 155))
+    tone_guidance = (
+        'Language: Pure Hindi written strictly in Devanagari script (देवनागरी लिपि). '
+        'Do NOT use English or Latin alphabet letters anywhere in the narration text. '
+        'All words, including common terms, must be written phonetically in Devanagari (e.g. एआई, कंप्यूटर, टेक्नोलॉजी, इंटरनेट). '
+        'Narration tone: Casual, engaging conversational spoken Hindi that sounds natural aloud, '
+        'like an authentic Indian video creator speaking directly with a friend. '
+        'Do NOT write formal textbook prose or open with a generic "क्या आप जानते हैं?". '
+        'Use a specific situational hook, explain concepts simply with relatable examples, and deliver an entertaining payoff. '
+    ) if language == 'hi' else (
+        'Narration tone: Conversational, engaging, natural spoken explainer that connects warmly with the audience. '
+    )
     prompt=(f'Create an engaging spoken explainer script for an educational photo-based video. '
-            f'Language: {"Hindi in Devanagari" if language=="hi" else "English"}. Idea: {idea}. '
+            f'Language: {"Pure Hindi strictly in Devanagari script (देवनागरी)" if language=="hi" else "English"}. Idea: {idea}. '
+            f'{tone_guidance}'
             f'Approximate MAIN CONTENT length: {content_minutes:.2f} minutes (~{words} words, prioritize natural pacing). '
             'Structure the script with three distinct sections: '
             '1. Proper Intro Setup: Do not jump directly into technical points. Build up the main topic and premise first with an intriguing hook, relatable scenario, or thought-provoking question to captivate the audience. '
@@ -122,8 +134,8 @@ def narrative_from_idea(idea, language, minutes, outro_profile='default'):
             'Separate channel greetings and subscribe calls-to-action are added as separate video bookends, so do not include channel welcomes or subscribe sign-offs. '
             'For science, history, or factual topics, distinguish established facts from uncertainty and do not invent claims. '
             'Satisfy the requested length without repetition. No time codes, camera directions, headings, or music directions. '
-            'Return JSON object with keys "title" (short text), "output_slug" (2-8 lowercase ASCII words '
-            'separated only by hyphens, suitable for a folder name), "narration" (continuous spoken text), '
+            'Return JSON object with keys "title" (short text in Devanagari script for Hindi), "output_slug" (2-8 lowercase ASCII words '
+            'separated only by hyphens, suitable for a folder name), "narration" (continuous spoken text in Devanagari script for Hindi, zero Latin/English characters), '
             '"theme" (2-4 English words describing photo background), "music_moods" (array of 2 English keywords).')
     result=gemini_json(prompt)
     if not isinstance(result.get('narration'),str) or len(result['narration'])<30: raise ValueError('Gemini returned empty narration')
@@ -210,10 +222,10 @@ def script_title_from_llm(content, language):
 
 def intro_narration(title, language):
     display_title = re.sub(r'[_-]+', ' ', str(title or '')).strip()
-    if not display_title or (language == 'hi' and re.match(r'^[a-zA-Z0-9_\-\s]+$', display_title)):
+    if not display_title or (language == 'hi' and re.search(r'[a-zA-Z]', display_title)):
         display_title = 'आज का विशेष विषय' if language == 'hi' else "today's topic"
     if language == 'hi':
-        return f'नमस्कार दोस्तों! आज के वीडियो में हम जानेंगे: {display_title}। चलिए शुरू करते हैं।'
+        return f'तो क्या हाल है दोस्तों! आज के वीडियो में हम जानेंगे {display_title} के बारे में। चलिए शुरू करते हैं!'
     return f"Hello everyone! In today's video, we're exploring {display_title}. Let's begin."
 
 
@@ -243,15 +255,28 @@ def compose_narration(content, title, language, outro_profile, intro_text=None):
     return intro, outro, '\n\n'.join((intro, content.strip(), outro))
 
 
-def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None):
+def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None, image_provider='pexels'):
     intro, outro, full_narration = compose_narration(content, title, language, outro_profile, intro_text)
-    content_scenes = plan_scenes(content, language, theme, tts_provider)
+    if image_provider == 'pexels':
+        content_scenes = plan_scenes(content, language, theme, tts_provider)
+    else:
+        content_scenes = plan_scenes(content, language, theme, tts_provider, image_provider=image_provider)
     for scene in content_scenes:
         scene['kind'] = 'content'
+    if image_provider == 'cloudflare-flux':
+        intro_query = (
+            f"Conceptual minimalist whiteboard doodle backdrop representing {theme}, "
+            "thematic symbols and conceptual objects arranged on the sides and desk, "
+            "clean empty center space, strictly no stick figures, no people, no characters, no human figures"
+        )
+        outro_query = f"{theme} blurred outro backdrop"
+    else:
+        intro_query = f'{theme} educational introduction'
+        outro_query = f'{theme} calm background'
     scenes = [
         {
             'text': intro,
-            'query': f'{theme} educational introduction',
+            'query': intro_query,
             'image': None,
             'mood': 'joy',
             'kind': 'intro',
@@ -260,7 +285,7 @@ def build_video_scenes(content, title, language, theme, outro_profile, tts_provi
         *content_scenes,
         {
             'text': outro,
-            'query': f'{theme} calm background',
+            'query': outro_query,
             'image': None,
             'mood': 'joy',
             'kind': 'outro',
@@ -472,18 +497,36 @@ def scene_chunking(tts_provider):
     return 'gemini-aligned-short-v2' if tts_provider == 'gemini' else 'short-v1'
 
 
-def plan_scenes(narration, language, theme, tts_provider='edge'):
+def plan_scenes(narration, language, theme, tts_provider='edge', image_provider='pexels'):
     log('Planning scene imagery using Gemini')
     groups=narration_groups(narration, language, tts_provider)
     query_text='\n'.join(f'{i}: {g[:420]}' for i,g in enumerate(groups))
-    prompt=(f'For every numbered narration segment, suggest one visually relevant Pexels PHOTO search query and one restrained avatar cue. '
-            f'Narration language {language}; theme: {theme}. Queries MUST be ENGLISH, photographic, concrete, '
-            'not abstract moods. 2-6 keywords. Keep visual descriptions faithful to what narrator says; '
-            'do not hallucinate or claim that a visual is an exact depiction of real people/events. '
+    if image_provider == 'cloudflare-flux':
+        prompt = (
+            f'For every numbered narration segment, describe ONE concrete, literal minimalist stick figure doodle scene illustration. '
+            f'Narration language: {language}; theme: {theme}. '
+            'Rules for visual descriptions: '
+            '1. ENGLISH descriptions only, strictly under 25 words. '
+            '2. Describe 1 (or 2) stickman characters performing an observable physical action with 1 simple prop or symbol. '
+            '3. CRITICAL: Always specify EXPLICIT SPATIAL RELATIONSHIPS to prevent fusing '
+            '(e.g., "looking at a vintage computer in front of him", "standing next to a robot on his right", '
+            '"holding a glowing lightbulb in his hand", "sitting at a desk with a laptop placed in front of him"). '
+            '4. NEVER use abstract metaphors or philosophical jargon. '
+            '5. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO BANNERS, NO POSTERS, NO SIGNS. Do not include words or writing on props. '
             f'Avatar cue must be one of: {", ".join(sorted(AVATAR_CUES))}. Use explanation for ordinary narration; '
             'only choose a special cue when the words clearly signal that beat. '
             'Return JSON with key "queries", array of objects {"id":integer,"query":string,"avatar_cue":string} covering all ids. '
-            'Segments:\n'+query_text)
+            'Segments:\n' + query_text
+        )
+    else:
+        prompt=(f'For every numbered narration segment, suggest one visually relevant Pexels PHOTO search query and one restrained avatar cue. '
+                f'Narration language {language}; theme: {theme}. Queries MUST be ENGLISH, photographic, concrete, '
+                'not abstract moods. 2-6 keywords. Keep visual descriptions faithful to what narrator says; '
+                'do not hallucinate or claim that a visual is an exact depiction of real people/events. '
+                f'Avatar cue must be one of: {", ".join(sorted(AVATAR_CUES))}. Use explanation for ordinary narration; '
+                'only choose a special cue when the words clearly signal that beat. '
+                'Return JSON with key "queries", array of objects {"id":integer,"query":string,"avatar_cue":string} covering all ids. '
+                'Segments:\n'+query_text)
     # Chunk so long videos do not overload the model.
     mapping={}
     for offset in range(0,len(groups),35):
@@ -529,8 +572,46 @@ def fetch_file(url, path, max_bytes=25_000_000):
     if size<512: raise RuntimeError('Downloaded file unexpectedly small')
 
 
-def gather_images(scenes, theme, folder):
+def gather_images(scenes, theme, folder, image_provider='pexels'):
     folder.mkdir(exist_ok=True,parents=True)
+    if image_provider == 'cloudflare-flux':
+        from cloudflare_flux_provider import generate_flux_image, create_blurred_image
+        progress_started = time.monotonic()
+        for i, sc in enumerate(scenes):
+            if sc.get('kind') == 'outro' and i > 0:
+                dest = folder / 'outro_blurred.jpg'
+                prev_image = None
+                for prev_sc in reversed(scenes[:i]):
+                    candidate = Path(prev_sc.get('image', '')) if prev_sc.get('image') else None
+                    if candidate and candidate.is_file() and candidate != dest:
+                        prev_image = candidate
+                        break
+                if prev_image:
+                    if not (dest.is_file() and dest.stat().st_size >= 10240):
+                        create_blurred_image(prev_image, dest)
+                    sc['image'] = str(dest)
+                    sc['image_provider'] = 'cloudflare-flux'
+                    log_progress('Images', i+1, len(scenes), progress_started)
+                    continue
+
+            current_image = Path(sc.get('image', '')) if sc.get('image') else None
+            if current_image and current_image.is_file():
+                log_progress('Images', i+1, len(scenes), progress_started)
+                continue
+            scene_key = hashlib.sha256((sc.get('kind', 'content') + '\0' + sc['text']).encode('utf-8')).hexdigest()[:20]
+            dest = folder / f'scene_{scene_key}.jpg'
+            if dest.exists() and dest.stat().st_size >= 10240:
+                sc['image'] = str(dest)
+                sc['image_provider'] = 'cloudflare-flux'
+                log_progress('Images', i+1, len(scenes), progress_started)
+                continue
+            log(f"Generating scene {i+1}/{len(scenes)} doodle via Cloudflare FLUX")
+            generate_flux_image(sc['query'], dest)
+            sc['image'] = str(dest)
+            sc['image_provider'] = 'cloudflare-flux'
+            log_progress('Images', i+1, len(scenes), progress_started)
+        return scenes
+
     fallbacks=[]
     log('Downloading themed fallback photos')
     for p in pexels_search(theme,12):
@@ -545,6 +626,25 @@ def gather_images(scenes, theme, folder):
     used=set()
     progress_started = time.monotonic()
     for i,sc in enumerate(scenes):
+        if sc.get('kind') == 'outro' and i > 0:
+            dest = folder / 'outro_blurred.jpg'
+            prev_image = None
+            for prev_sc in reversed(scenes[:i]):
+                candidate = Path(prev_sc.get('image', '')) if prev_sc.get('image') else None
+                if candidate and candidate.is_file() and candidate != dest:
+                    prev_image = candidate
+                    break
+            if prev_image:
+                if not (dest.is_file() and dest.stat().st_size >= 10240):
+                    try:
+                        from cloudflare_flux_provider import create_blurred_image
+                        create_blurred_image(prev_image, dest)
+                    except Exception:
+                        shutil.copyfile(prev_image, dest)
+                sc['image'] = str(dest)
+                log_progress('Images', i+1, len(scenes), progress_started)
+                continue
+
         current_image = Path(sc.get('image', '')) if sc.get('image') else None
         if current_image and current_image.is_file():
             log_progress('Images', i+1, len(scenes), progress_started)
@@ -1381,10 +1481,14 @@ def build_parser():
     p.add_argument('--intro-text', help='Custom spoken intro narration text override')
     p.add_argument('--outro', choices=OUTRO_PROFILES, default='default',
                    help='Mandatory outro profile (default: generic; facts-sun-le-bhai adds the branded Hindi/English call-to-action)')
+    p.add_argument('--image-provider', choices=['pexels', 'cloudflare-flux', 'flux', 'cloudflare'], default='pexels',
+                   help='Visual imagery provider: pexels (stock photos) or cloudflare-flux/flux (minimalist whiteboard stickman doodles via Cloudflare Workers AI)')
     return p
 
 
 def validate_cli_args(p, args):
+    if getattr(args, 'image_provider', 'pexels') in ('flux', 'cloudflare'):
+        args.image_provider = 'cloudflare-flux'
     if args.tts in ('puck', 'gemini-tts'):
         args.tts = 'gemini'
     if args.tts == 'indic-parler':
@@ -1410,8 +1514,18 @@ def require_pipeline_prerequisites(p, args):
         require_alignment()
     if not os.getenv('GEMINI_API_KEY'):
         p.error('Missing GEMINI_API_KEY in .env')
-    if not args.dry_run and not os.getenv('PEXELS_API_KEY'):
-        p.error('Missing PEXELS_API_KEY in .env')
+    if not args.dry_run:
+        if getattr(args, 'image_provider', 'pexels') == 'pexels':
+            if not os.getenv('PEXELS_API_KEY'):
+                p.error('Missing PEXELS_API_KEY in .env')
+        elif getattr(args, 'image_provider', 'pexels') == 'cloudflare-flux':
+            missing = []
+            if not os.getenv('CLOUDFLARE_ACCOUNT_ID'):
+                missing.append('CLOUDFLARE_ACCOUNT_ID')
+            if not os.getenv('CLOUDFLARE_API_TOKEN'):
+                missing.append('CLOUDFLARE_API_TOKEN')
+            if missing:
+                p.error(f'Missing {", ".join(missing)} in .env for --image-provider cloudflare-flux')
 
 
 def main():
@@ -1551,13 +1665,14 @@ def main():
         project['outro_profile'] = args.outro
         project['scene_chunking'] = scene_chunking(args.tts)
         project['output_slug'] = args.output.name
+        project['image_provider'] = getattr(args, 'image_provider', 'pexels')
         project['language']=args.language
         project['theme']=args.theme or project.get('theme') or 'cinematic landscape'
         project['music_moods']=[x.strip() for x in args.music_mood.split(',')] if args.music_mood else project.get('music_moods',['cinematic'])
         project['content_narration'] = project['narration'].strip()
         scenes, intro, outro, video_narration = build_video_scenes(
             project['content_narration'], project.get('title'), args.language, project['theme'], args.outro, args.tts,
-            args.intro_text,
+            args.intro_text, image_provider=project['image_provider'],
         )
         project['intro_narration'] = intro
         project['outro_narration'] = outro
@@ -1570,7 +1685,12 @@ def main():
     if args.dry_run:
         log(f'Dry run: {len(project["scenes"])} planned scenes with mandatory intro/outro and avatar states in {meta}');return
     scenes=project['scenes']
-    gather_images(scenes,project['theme'],args.output/'images');write_json_atomic(meta,project)
+    effective_image_provider = getattr(args, 'image_provider', project.get('image_provider', 'pexels'))
+    if effective_image_provider == 'pexels':
+        gather_images(scenes, project['theme'], args.output/'images')
+    else:
+        gather_images(scenes, project['theme'], args.output/'images', image_provider=effective_image_provider)
+    write_json_atomic(meta,project)
     narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
     if args.tts == 'voicestudio':
         narrate_args.extend([getattr(args, 'voicestudio_url', None), getattr(args, 'voice_sample', None), getattr(args, 'voicestudio_speed', None)])
@@ -1587,7 +1707,10 @@ def main():
             deficit=content_target-content_length
             log(f'Script shorter than target by {deficit:.1f}s; requesting meaningful continuation {attempt+1}/2')
             extra=expand_narration(project,deficit)
-            added=plan_scenes(extra,project['language'],project['theme'],args.tts)
+            if effective_image_provider == 'pexels':
+                added=plan_scenes(extra,project['language'],project['theme'],args.tts)
+            else:
+                added=plan_scenes(extra,project['language'],project['theme'],args.tts,image_provider=effective_image_provider)
             for scene in added:
                 scene['kind'] = 'content'
             scenes[-1:-1] = added
@@ -1600,7 +1723,10 @@ def main():
             write_json_atomic(meta,project)
             (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
             (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
-            gather_images(scenes,project['theme'],args.output/'images')
+            if effective_image_provider == 'pexels':
+                gather_images(scenes,project['theme'],args.output/'images')
+            else:
+                gather_images(scenes,project['theme'],args.output/'images',image_provider=effective_image_provider)
             narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
             if args.tts == 'voicestudio':
                 narrate_args.extend([getattr(args, 'voicestudio_url', None), getattr(args, 'voice_sample', None), getattr(args, 'voicestudio_speed', None)])

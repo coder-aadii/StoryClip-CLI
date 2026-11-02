@@ -103,9 +103,39 @@ def gemini_speak(text, dest, language, mood='neutral'):
     from google.genai import types
     client=genai.Client(api_key=os.environ['GEMINI_API_KEY'])
     delivery = {'horror': 'Narrate with restrained dread, uneasy pauses and rising tension. Sound like a human telling a frightening story, not an announcer.', 'joy': 'Narrate warmly, smiling, animated and full of genuine delight.', 'neutral': 'Narrate naturally with authentic storytelling emotion and varied intonation.'}.get(mood,'Narrate naturally.')
+
+    if language == 'hi':
+        profile = (
+            "Audio Profile: Young adult Indian Hindi/Hinglish narrator; confident, clear, conversational, and expressive. "
+            "Preserve natural pronunciation."
+        )
+        scene_desc = "Scene: Engaging Hindi explainer narration."
+        notes = (
+            "Director's Notes: Apply the following performance directions without speaking them. "
+            "Speak ONLY the exact text in the Transcript section. Do not read any instructions, profile labels, or section titles aloud.\n"
+            f"- Delivery: {delivery} Natural, confident spoken Hindi/Hinglish cadence; punchy and engaging."
+        )
+    else:
+        profile = (
+            "Audio Profile: Young adult narrator; confident, clear, conversational, and expressive."
+        )
+        scene_desc = "Scene: Engaging educational explainer narration."
+        notes = (
+            "Director's Notes: Apply the following performance directions without speaking them. "
+            "Speak ONLY the exact text in the Transcript section. Do not read any instructions, profile labels, or section titles aloud.\n"
+            f"- Delivery: {delivery} Natural, clear conversational pacing."
+        )
+
+    prompt_contents = (
+        f"{profile}\n\n"
+        f"{scene_desc}\n\n"
+        f"{notes}\n\n"
+        f"Transcript:\n{text}"
+    )
+
     request = {
         'model': os.getenv('GEMINI_TTS_MODEL','gemini-2.5-flash-preview-tts'),
-        'contents': f'{delivery} Speak the following words verbatim in {"Hindi" if language=="hi" else "English"}; do not read the directions aloud. Script: {text}',
+        'contents': prompt_contents,
         'config': types.GenerateContentConfig(response_modalities=['AUDIO'],speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=GEMINI_TTS_VOICE)))),
     }
     for attempt in range(1, GEMINI_TTS_MAX_ATTEMPTS + 1):
@@ -230,7 +260,7 @@ def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voi
     gemini = {
         'model': os.getenv('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
         'voice': GEMINI_TTS_VOICE,
-        'delivery_prompt_version': 1,
+        'delivery_prompt_version': 2,
     }
     if provider == 'indic-parler':
         identity['settings'] = {'base_url': indic_url.rstrip('/'), 'voice': indic_voice, 'language': 'hi-IN'}

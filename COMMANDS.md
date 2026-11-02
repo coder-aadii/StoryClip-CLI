@@ -45,6 +45,24 @@ Use `--title` to supply a clean spoken title, or `--intro-text` for custom spoke
 
 Use either `--idea` or `--script`.
 
+## Minimalist whiteboard / stickman doodle videos (Cloudflare FLUX)
+
+Generate YouTube whiteboard explainer stickman and doodle illustrations using Cloudflare Workers AI FLUX.1 [schnell] instead of stock photography:
+
+```bash
+./run_video.sh \
+  --script my_script.txt \
+  --language hi \
+  --image-provider cloudflare-flux \
+  --tts edge-male \
+  --output outputs/doodle-explainer
+```
+
+- Requires `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`.
+- Free tier includes 10,000 Neurons/day (~35–40 images daily at $0).
+- Zero local GPU stress (serverless cloud GPUs generate each scene in ~2 seconds).
+- `flux` and `cloudflare` are accepted as convenient aliases for `--image-provider cloudflare-flux`.
+
 Use `--tts gemini` (or `--tts puck`) for Puck narration (upbeat and lively male voice preset) in continuous chunks targeting 60–90 seconds. Images still switch at short visual scene boundaries (roughly 10 seconds), with local alignment setting their actual timing and SRT cues. Intro/outro remain separate. `--tts auto` and other providers retain per-scene synthesis. Choose a fresh `--output` directory for an older Gemini project; its saved scene layout will be rejected without modifying its media.
 
 Before using Gemini narration, install the local alignment dependencies:
