@@ -21,10 +21,23 @@ class AlignmentTests(unittest.TestCase):
     def test_invalid_or_incomplete_alignment_is_rejected(self):
         scenes = [{'text': 'Hello.'}, {'text': 'World.'}]
         good = [dict(word='Hello.', start=0, end=1), dict(word='World.', start=2, end=3)]
-        for words in [good[:1], [], [dict(word='Hello.', start=0, end=0), good[1]],
+        for words in [good[:1], [], [dict(word='Hello.', start=1, end=0), good[1]],
+                      [good[0], dict(word='World.', start=0.5, end=3)],
                       [good[0], dict(word='World.', start=float('nan'), end=3)]]:
             with self.subTest(words=words), self.assertRaises(ValueError):
                 alignment.scene_boundaries(words, scenes, 4)
+
+    def test_zero_duration_words_and_minor_overlap_accepted(self):
+        scenes = [{'text': 'Hello.'}, {'text': 'World.'}]
+        # Zero duration word (e.g., short particle from ASR alignment)
+        words_zero_duration = [dict(word='Hello.', start=0.5, end=0.5), dict(word='World.', start=1.5, end=2.5)]
+        boundaries = alignment.scene_boundaries(words_zero_duration, scenes, 4)
+        self.assertEqual(boundaries, [0.0, 1.5, 4])
+
+        # Minor acoustic overlap (e.g., 30ms) between words
+        words_minor_overlap = [dict(word='Hello.', start=0, end=1.0), dict(word='World.', start=0.97, end=2.5)]
+        boundaries = alignment.scene_boundaries(words_minor_overlap, scenes, 4)
+        self.assertEqual(boundaries, [0.0, 0.97, 4])
 
     def test_alignment_cache_reuse_and_audio_invalidation(self):
         words = [SimpleNamespace(word='Hello.', start=0.1, end=1),

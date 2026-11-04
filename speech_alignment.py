@@ -44,10 +44,11 @@ def scene_boundaries(words, scenes, duration):
     for word in words:
         token = normalized(word['word'])
         start, end = float(word['start']), float(word['end'])
-        if (not math.isfinite(start) or not math.isfinite(end) or start < previous_end - 0.02
-                or start < 0 or end <= start or end > duration + 0.1):
+        if (not math.isfinite(start) or not math.isfinite(end) or
+                start < previous_end - 0.05 or
+                start < 0 or end < start or end > duration + 0.2):
             raise ValueError('Invalid or overlapping word timestamps')
-        previous_end = end
+        previous_end = max(previous_end, end)
         if token:
             starts[offset] = start
             offset += len(token)
