@@ -9,6 +9,7 @@ import os
 import random
 import re
 import shutil
+import subprocess
 import sys
 import time
 import unicodedata
@@ -36,12 +37,15 @@ BUILTIN_BGM_FILES = {
     'mystery': 'mystery_theme_1.mp3',
     'nature': 'nature_documentary_theme_1.mp3',
     'technology': 'technology_theme_1.mp3',
+    'soothing': 'relaxing_theme_1.mp3',
+    'relaxing': 'relaxing_theme_1.mp3',
+    'energetic': 'energetic_theme_1.mp3',
 }
 BUILTIN_BGM_DIR = Path(__file__).resolve().parent / 'storage/BGM'
 RENDER_FINGERPRINT_VERSION = 2
-SEGMENT_RENDER_VERSION = 1
+SEGMENT_RENDER_VERSION = 3
 PROJECT_FORMAT_VERSION = 2
-AVATAR_PLAN_VERSION = 4
+AVATAR_PLAN_VERSION = 6
 AVATAR_DIR = Path(__file__).resolve().parent / 'storage/Expression_Stickman'
 AVATAR_MANIFEST_PATH = AVATAR_DIR / 'manifest.json'
 OUTRO_CTA_IMAGE = Path(__file__).resolve().parent / 'storage/Outro_image/Like_share_comment_subscribe_combined.png'
@@ -51,18 +55,31 @@ AVATAR_SIDE_MARGIN = 32
 AVATAR_BOTTOM_MARGIN = 18
 AVATAR_TARGET_BLOCK_SECONDS = 10.0
 AVATAR_MIN_POSITION_HOLD_SECONDS = 10.0
+SHORTS_AVATAR_HOLD_SECONDS = 6.0
 AVATAR_MOVE_SECONDS = 0.8
 OUTRO_CTA_WIDTH_RATIO = 0.78
 OUTRO_CTA_BOTTOM_MARGIN = 16
 OUTRO_CTA_FADE_SECONDS = 0.45
-OUTRO_PROFILES = ('default', 'facts-sun-le-bhai')
+OUTRO_PROFILES = ('default', 'facts-sun-le-bhai', 'shorts')
 VIDEO_RESOLUTIONS = {
     '720p': (1280, 720),
     '1080p': (1920, 1080),
     '2160p': (3840, 2160),
+    'shorts': (1080, 1920),
+    'vertical': (1080, 1920),
+    'shorts-720': (720, 1280),
+    'shorts-1080': (1080, 1920),
 }
 # Keep UHD batches smaller while avoiding repeated full-length encode passes on 1-hour projects.
-XFADE_MERGE_INPUTS = {'720p': 64, '1080p': 40, '2160p': 24}
+XFADE_MERGE_INPUTS = {
+    '720p': 64,
+    '1080p': 40,
+    '2160p': 24,
+    'shorts': 40,
+    'vertical': 40,
+    'shorts-720': 64,
+    'shorts-1080': 40,
+}
 ZOOM_OVERSCAN = 1.12
 AVATAR_CUES = {
     'explanation', 'visual_focus', 'question', 'important_fact', 'warning',
@@ -105,13 +122,16 @@ def gemini_json(prompt):
 
 
 def reserved_intro_outro_seconds(outro_profile):
+    if outro_profile == 'shorts':
+        return 4.0
     return 20 if outro_profile == 'facts-sun-le-bhai' else 15
 
 
-def narrative_from_idea(idea, language, minutes, outro_profile='default'):
+def narrative_from_idea(idea, language, minutes, outro_profile='default', is_shorts=False):
     log('Generating narration script with Gemini')
-    content_minutes=max(0.25, minutes-reserved_intro_outro_seconds(outro_profile)/60)
-    words=int(content_minutes*(145 if language=='hi' else 155))
+    content_minutes = max(0.25, minutes - reserved_intro_outro_seconds(outro_profile)/60)
+    words = int(content_minutes * (135 if language == 'hi' else 145)) if is_shorts else int(content_minutes * (145 if language == 'hi' else 155))
+    pace_note = 'Target total video duration is STRICTLY under 55 seconds for a fast-paced YouTube Short. Keep narration concise, fast-paced, and engaging. ' if is_shorts else ''
     tone_guidance = (
         'Language: Pure Hindi written strictly in Devanagari script (देवनागरी लिपि). '
         'Do NOT use English or Latin alphabet letters anywhere in the narration text. '
@@ -123,7 +143,7 @@ def narrative_from_idea(idea, language, minutes, outro_profile='default'):
     ) if language == 'hi' else (
         'Narration tone: Conversational, engaging, natural spoken explainer that connects warmly with the audience. '
     )
-    prompt=(f'Create an engaging spoken explainer script for an educational photo-based video. '
+    prompt=(f'Create an engaging spoken explainer script for an educational video. {pace_note}'
             f'Language: {"Pure Hindi strictly in Devanagari script (देवनागरी)" if language=="hi" else "English"}. Idea: {idea}. '
             f'{tone_guidance}'
             f'Approximate MAIN CONTENT length: {content_minutes:.2f} minutes (~{words} words, prioritize natural pacing). '
@@ -232,6 +252,10 @@ def intro_narration(title, language):
 def outro_narration(profile, language):
     if profile not in OUTRO_PROFILES:
         raise ValueError(f'Unsupported outro profile: {profile}')
+    if profile == 'shorts':
+        if language == 'hi':
+            return 'ऐसे ही अमेजिंग फैक्ट्स के लिए वीडियो को लाइक और चैनल को सब्सक्राइब जरूर करें!'
+        return 'Subscribe for more daily mind-blowing facts! See you in the next one!'
     if profile == 'facts-sun-le-bhai':
         if language == 'hi':
             return ('ऐसे ही इंटरेस्टिंग वीडियो देखने के लिए हमारे चैनल फैक्ट सुन ले भाई को सब्सक्राइब करें। '
@@ -255,12 +279,12 @@ def compose_narration(content, title, language, outro_profile, intro_text=None):
     return intro, outro, '\n\n'.join((intro, content.strip(), outro))
 
 
-def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None, image_provider='pexels'):
+def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None, image_provider='pexels', is_shorts=False):
     intro, outro, full_narration = compose_narration(content, title, language, outro_profile, intro_text)
     if image_provider == 'pexels':
-        content_scenes = plan_scenes(content, language, theme, tts_provider)
+        content_scenes = plan_scenes(content, language, theme, tts_provider, is_shorts=is_shorts)
     else:
-        content_scenes = plan_scenes(content, language, theme, tts_provider, image_provider=image_provider)
+        content_scenes = plan_scenes(content, language, theme, tts_provider, image_provider=image_provider, is_shorts=is_shorts)
     for scene in content_scenes:
         scene['kind'] = 'content'
     if image_provider == 'cloudflare-flux':
@@ -270,6 +294,9 @@ def build_video_scenes(content, title, language, theme, outro_profile, tts_provi
             "clean empty center space, strictly no stick figures, no people, no characters, no human figures"
         )
         outro_query = f"{theme} blurred outro backdrop"
+    elif image_provider == 'pexels-video':
+        intro_query = f"{theme} technology introduction"
+        outro_query = f"{theme} outro background"
     else:
         intro_query = f'{theme} educational introduction'
         outro_query = f'{theme} calm background'
@@ -292,6 +319,9 @@ def build_video_scenes(content, title, language, theme, outro_profile, tts_provi
             'avatar_cue': 'celebration',
         },
     ]
+    if is_shorts:
+        for s in scenes:
+            s['is_shorts'] = True
     return scenes, intro, outro, full_narration
 
 
@@ -351,6 +381,37 @@ def avatar_region_score(scenes, position):
     return sum(scores) / len(scores) if scores else None
 
 
+def avatar_pose_for_scene(scene, position, previous_pose=None, index=0):
+    cue = scene.get('avatar_cue')
+    text = (scene.get('text') or '').lower()
+    mood = scene.get('mood')
+
+    if '?' in text or 'क्यों' in text or 'कैसे' in text or 'क्या' in text or cue == 'question':
+        pose_pool = ['thinking', 'confused']
+    elif cue == 'reveal' or 'सच' in text or 'रहस्य' in text or 'secret' in text or 'revealed' in text:
+        pose_pool = ['idea_reveal', 'pointing_up', 'smug']
+    elif cue == 'surprise' or 'हैरान' in text or 'चौंक' in text or 'shocking' in text:
+        pose_pool = ['shocked', 'dramatic_pause']
+    elif cue == 'celebration' or 'लाइक' in text or 'अमेजिंग' in text or 'मजेदार' in text or 'जीत' in text:
+        pose_pool = ['celebrating', 'laughing']
+    elif cue == 'warning' or 'खतरा' in text or 'सावधान' in text or 'danger' in text:
+        pose_pool = ['serious_fact', 'nervous_sweat', 'dramatic_pause']
+    elif cue == 'important_fact' or 'खास' in text or 'ध्यान' in text or 'याद' in text:
+        pose_pool = ['pointing_up', 'serious_fact', 'skeptical']
+    elif cue == 'visual_focus':
+        pose_pool = ['pointing_right' if position == 'left' else 'pointing_left']
+    elif mood == 'horror':
+        pose_pool = ['shocked', 'nervous_sweat', 'dramatic_pause']
+    elif mood == 'joy':
+        pose_pool = ['celebrating', 'laughing', 'smug']
+    else:
+        dir_pose = 'pointing_right' if position == 'left' else 'pointing_left'
+        pose_pool = ['explaining', 'presenting', 'pointing_up', dir_pose, 'smug']
+
+    candidates = [p for p in pose_pool if p != previous_pose]
+    return candidates[index % len(candidates)] if candidates else pose_pool[0]
+
+
 def avatar_pose_for_block(scenes, position, previous_pose=None, block_index=0):
     priorities = (
         'warning', 'important_fact', 'reveal', 'question', 'surprise',
@@ -376,6 +437,54 @@ def avatar_pose_for_block(scenes, position, previous_pose=None, block_index=0):
 
 def build_avatar_plan(scenes):
     manifest = load_avatar_manifest()
+    is_shorts = any(bool(s.get('is_shorts')) or bool(s.get('is_video')) or str(s.get('image', '')).endswith(('.mp4', '.mov')) for s in scenes)
+    if is_shorts:
+        blocks = []
+        previous_position = 'center'
+        previous_pose = 'waving'
+        current_position = 'left'
+        position_held_seconds = 0.0
+        content_index = 0
+        for index, scene in enumerate(scenes):
+            kind = scene.get('kind', 'content')
+            duration = float(scene.get('duration') or max(1.5, len(scene.get('text', '').split()) / 2.0))
+            if kind in ('intro', 'outro'):
+                position, pose = 'center', 'waving'
+                from_pos = previous_position
+            else:
+                if content_index == 0:
+                    position = 'left'
+                    current_position = 'left'
+                    position_held_seconds = 0.0
+                elif position_held_seconds >= SHORTS_AVATAR_HOLD_SECONDS:
+                    position = 'right' if current_position == 'left' else 'left'
+                    current_position = position
+                    position_held_seconds = 0.0
+                else:
+                    position = current_position
+                from_pos = previous_position
+                pose = avatar_pose_for_scene(scene, position, previous_pose, content_index)
+                position_held_seconds += duration
+                content_index += 1
+            if pose not in manifest['poses']:
+                pose = 'explaining'
+            state = {'pose': pose, 'position': position}
+            scene['avatar'] = dict(state)
+            blocks.append({
+                'start_scene': index,
+                'end_scene': index,
+                'kind': kind,
+                'from_position': from_pos,
+                **state,
+            })
+            previous_position = position
+            previous_pose = pose
+        return {
+            'version': AVATAR_PLAN_VERSION,
+            'asset_version': manifest['version'],
+            'blocks': blocks,
+        }
+
     blocks = []
     content_group = []
     content_seconds = 0.0
@@ -475,21 +584,56 @@ def sentences(text):
     return [s.strip() for s in chunks if s.strip()]
 
 
-def narration_groups(narration, language, tts_provider='edge'):
+def narration_groups(narration, language, tts_provider='edge', is_shorts=False):
     # Planning estimates only; measured speech still determines scene timing.
-    # Keep sentences intact, even when a single sentence exceeds the target.
-    target, maximum = 7.5, 12.5
-    paragraphs = re.split(r'\n\s*\n', narration) if tts_provider == 'gemini' else [narration]
-    wps=1.75 if language=='hi' else 2.25
-    groups=[]
-    for paragraph in paragraphs:
-        buf=[]; secs=0
-        for s in sentences(paragraph):
-            est=max(1.5,len(s.split())/wps)
-            if buf and (secs+est>maximum or secs>=target):
-                groups.append(' '.join(buf));buf=[];secs=0
-            buf.append(s);secs+=est
-        if buf:groups.append(' '.join(buf))
+    if not is_shorts:
+        paragraphs = re.split(r'\n\s*\n', narration) if tts_provider == 'gemini' else [narration]
+        wps = 1.75 if language == 'hi' else 2.25
+        target, maximum = (7.5, 12.5)
+        groups = []
+        for paragraph in paragraphs:
+            buf = []
+            secs = 0
+            for s in sentences(paragraph):
+                est = max(1.5, len(s.split()) / wps)
+                if buf and (secs + est > maximum or secs >= target):
+                    groups.append(' '.join(buf))
+                    buf = []
+                    secs = 0
+                buf.append(s)
+                secs += est
+            if buf:
+                groups.append(' '.join(buf))
+        return groups
+
+    # For YouTube Shorts: Target ~5.0s per video clip (~9-12 words at 1.85-2.2 wps)
+    target_sec = 5.0
+    wps = 1.85 if language == 'hi' else 2.2
+    target_words = round(target_sec * wps)
+
+    words = narration.strip().split()
+    total_words = len(words)
+    if total_words <= target_words + 3:
+        return [narration.strip()]
+
+    num_cuts = max(1, round(total_words / target_words))
+    step = total_words / num_cuts
+
+    groups = []
+    prev_idx = 0
+    for i in range(1, num_cuts):
+        ideal_idx = round(i * step)
+        best_idx = ideal_idx
+        for offset in [0, 1, -1, 2, -2]:
+            idx = ideal_idx + offset
+            if 0 < idx < total_words:
+                prev_word = words[idx - 1]
+                if any(p in prev_word for p in (',', '।', '?', '!', ';', '.', '—')):
+                    best_idx = idx
+                    break
+        groups.append(' '.join(words[prev_idx:best_idx]))
+        prev_idx = best_idx
+    groups.append(' '.join(words[prev_idx:]))
     return groups
 
 
@@ -497,11 +641,22 @@ def scene_chunking(tts_provider):
     return 'gemini-aligned-short-v2' if tts_provider == 'gemini' else 'short-v1'
 
 
-def plan_scenes(narration, language, theme, tts_provider='edge', image_provider='pexels'):
+def plan_scenes(narration, language, theme, tts_provider='edge', image_provider='pexels', is_shorts=False):
     log('Planning scene imagery using Gemini')
-    groups=narration_groups(narration, language, tts_provider)
-    query_text='\n'.join(f'{i}: {g[:420]}' for i,g in enumerate(groups))
-    if image_provider == 'cloudflare-flux':
+    groups = narration_groups(narration, language, tts_provider, is_shorts=is_shorts)
+    query_text = '\n'.join(f'{i}: {g[:420]}' for i, g in enumerate(groups))
+    if image_provider == 'pexels-video':
+        prompt = (
+            f'For every numbered narration segment, suggest one cinematic Pexels PORTRAIT VIDEO search query (2 to 5 English keywords) '
+            f'depicting dynamic real-world action or movement relevant to the narration. '
+            f'Narration language {language}; theme: {theme}. '
+            'Queries MUST be ENGLISH, concrete, physical motion (e.g. "robot working in lab", "neural network code", "futuristic laboratory", "person typing laptop"). '
+            f'Avatar cue must be one of: {", ".join(sorted(AVATAR_CUES))}. Use explanation for ordinary narration; '
+            'only choose a special cue when the words clearly signal that beat. '
+            'Return JSON with key "queries", array of objects {"id":integer,"query":string,"avatar_cue":string} covering all ids. '
+            'Segments:\n' + query_text
+        )
+    elif image_provider == 'cloudflare-flux':
         prompt = (
             f'For every numbered narration segment, describe ONE concrete, literal minimalist stick figure doodle scene illustration. '
             f'Narration language: {language}; theme: {theme}. '
@@ -572,8 +727,92 @@ def fetch_file(url, path, max_bytes=25_000_000):
     if size<512: raise RuntimeError('Downloaded file unexpectedly small')
 
 
-def gather_images(scenes, theme, folder, image_provider='pexels'):
+def gather_images(scenes, theme, folder, image_provider='pexels', width=1280, height=720):
     folder.mkdir(exist_ok=True,parents=True)
+    if image_provider == 'pexels-video':
+        from pexels_video_provider import pexels_video_search, download_video_file, extract_broll_clip
+        progress_started = time.monotonic()
+        used_ids = set()
+        for i, sc in enumerate(scenes):
+            if sc.get('kind') == 'outro' and i > 0:
+                dest = folder / 'outro_blurred.mp4'
+                prev_video = None
+                for prev_sc in reversed(scenes[:i]):
+                    candidate = Path(prev_sc.get('image', '')) if prev_sc.get('image') else None
+                    if candidate and candidate.is_file() and candidate != dest:
+                        prev_video = candidate
+                        break
+                if prev_video:
+                    if not (dest.is_file() and dest.stat().st_size >= 10240):
+                        outro_dur = float(sc.get('duration') or 4.0)
+                        cmd = [
+                            'ffmpeg', '-y', '-t', f'{outro_dur:.2f}', '-i', str(prev_video),
+                            '-vf', 'boxblur=20:5,setsar=1',
+                            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-an',
+                            str(dest)
+                        ]
+                        run(cmd)
+                    sc['image'] = str(dest)
+                    sc['image_provider'] = 'pexels-video'
+                    sc['is_video'] = True
+                    log_progress('Videos', i+1, len(scenes), progress_started)
+                    continue
+
+            current_image = Path(sc.get('image', '')) if sc.get('image') else None
+            if current_image and current_image.is_file():
+                log_progress('Videos', i+1, len(scenes), progress_started)
+                continue
+
+            scene_key = hashlib.sha256((sc.get('kind', 'content') + '\0' + sc['text']).encode('utf-8')).hexdigest()[:20]
+            dest = folder / f'clip_{scene_key}.mp4'
+            if dest.exists() and dest.stat().st_size >= 10240:
+                sc['image'] = str(dest)
+                sc['image_provider'] = 'pexels-video'
+                sc['is_video'] = True
+                log_progress('Videos', i+1, len(scenes), progress_started)
+                continue
+
+            log(f"Searching Pexels 1080p Video for scene {i+1}/{len(scenes)}: {sc['query'][:50]}")
+            candidates = pexels_video_search(sc['query'], count=8, orientation='portrait')
+            if not candidates:
+                candidates = pexels_video_search(theme, count=8, orientation='portrait')
+
+            downloaded = False
+            candidate_pool = [c for c in (candidates or []) if c['id'] not in used_ids]
+            if not candidate_pool and candidates:
+                candidate_pool = list(candidates)
+
+            for candidate in candidate_pool:
+                try:
+                    raw_dest = folder / f'raw_{candidate["id"]}.mp4'
+                    download_video_file(candidate['url'], raw_dest)
+                    clip_dur = float(sc.get('duration') or 3.5)
+                    extract_broll_clip(raw_dest, dest, duration=clip_dur, width=width, height=height)
+                    sc['image'] = str(dest)
+                    sc['photographer'] = candidate.get('photographer')
+                    sc['pexels_url'] = candidate.get('pexels_url')
+                    used_ids.add(candidate['id'])
+                    downloaded = True
+                    break
+                except Exception as ex:
+                    log(f"Warning: Candidate video {candidate.get('id')} failed ({ex}); trying next candidate...")
+                    continue
+
+            if not downloaded and i > 0:
+                for prev_sc in reversed(scenes[:i]):
+                    prev_candidate = Path(prev_sc.get('image', '')) if prev_sc.get('image') else None
+                    if prev_candidate and prev_candidate.is_file():
+                        sc['image'] = str(prev_candidate)
+                        sc['photographer'] = prev_sc.get('photographer')
+                        sc['pexels_url'] = prev_sc.get('pexels_url')
+                        downloaded = True
+                        break
+
+            sc['image_provider'] = 'pexels-video'
+            sc['is_video'] = True
+            log_progress('Videos', i+1, len(scenes), progress_started)
+        return scenes
+
     if image_provider == 'cloudflare-flux':
         from cloudflare_flux_provider import generate_flux_image, create_blurred_image
         progress_started = time.monotonic()
@@ -708,13 +947,17 @@ def select_builtin_bgm(project):
         ' '.join(str(mood) for mood in project.get('music_moods', [])),
     ]).lower()
     theme_keywords = (
+        ('soothing', ('soothing', 'calm', 'peaceful', 'serene', 'acoustic', 'quiet', 'gentle', 'soft', 'शांत', 'सुकून', 'सुखद')),
+        ('relaxing', ('relaxing', 'meditation', 'chill', 'zen', 'lofi', 'lo-fi', 'धीमा', 'आराम')),
+        ('energetic', ('energetic', 'upbeat', 'fast', 'action', 'rock', 'dance', 'power', 'उत्साह', 'जोश')),
         ('horror', ('horror', 'haunted', 'ghost', 'witch', 'scary', 'fear', 'spooky', 'भूत', 'डर', 'चुड़ैल', 'हवेली', 'भयानक')),
         ('science', ('science', 'scientific', 'space', 'black hole', 'astronomy', 'universe', 'cosmos', 'physics', 'biology', 'विज्ञान', 'वैज्ञानिक', 'अंतरिक्ष', 'ब्लैक होल', 'ब्रह्मांड', 'भौतिक')),
         ('technology', ('technology', 'tech', 'digital', 'robot', 'computer', 'engineering', 'तकनीक', 'टेक्नोलॉजी', 'रोबोट', 'कंप्यूटर')),
         ('nature', ('nature', 'wildlife', 'animal', 'forest', 'ocean', 'sea', 'landscape', 'प्रकृति', 'वन्यजीव', 'जानवर', 'जंगल', 'समुद्र', 'पृथ्वी')),
         ('mystery', ('mystery', 'mysterious', 'suspense', 'detective', 'investigation', 'रहस्य', 'रहस्यमय', 'सस्पेंस', 'जासूस')),
     )
-    genre = next((name for name, keywords in theme_keywords if any(word in context for word in keywords)), 'science')
+    fallback_genre = 'soothing' if project.get('format') == 'shorts' else 'science'
+    genre = next((name for name, keywords in theme_keywords if any(word in context for word in keywords)), fallback_genre)
     path = BUILTIN_BGM_DIR / BUILTIN_BGM_FILES[genre]
     if not path.is_file():
         log(f'Built-in {genre} BGM is missing at {path}; rendering narration-only')
@@ -1027,11 +1270,13 @@ def append_scene_visual(inputs, filters, scene, scene_index, block, manifest, pr
         if scene_style not in ('horror', 'joy', 'neutral'):
             scene_style = classify_mood(scene.get('text', ''))
 
-    base = (f'trim=end_frame={input_frames + 1},settb=1/{fps},'
+    is_video = str(scene.get('image', '')).lower().endswith(('.mp4', '.mov', '.webm', '.mkv')) or bool(scene.get('is_video'))
+    fps_prefix = f'fps={fps},' if is_video else ''
+    base = (f'{fps_prefix}trim=end_frame={input_frames + 1},settb=1/{fps},'
             f'setpts=PTS-STARTPTS+{frame_offset},'
             f'scale={width}:{height}:force_original_aspect_ratio=increase,'
             f'crop={width}:{height}')
-    if zoom:
+    if zoom and not is_video:
         total_frames = scene_frames + (fade_frames if has_next else 0)
         progress = f'((in-1+{frame_offset})/{total_frames-1})' if total_frames > 1 else '0'
         eased = f'({progress}*{progress}*(3-2*{progress}))'
@@ -1051,22 +1296,32 @@ def append_scene_visual(inputs, filters, scene, scene_index, block, manifest, pr
         base += ',eq=brightness=0.018:saturation=1.23:contrast=1.04'
     filters.append(f'[{image_input}:v]{base},setsar=1,format=yuv420p[{prefix}_image]')
 
-    is_bookend = block['kind'] in ('intro', 'outro')
-    avatar_height = round(height * (AVATAR_BOOKEND_HEIGHT_RATIO if is_bookend
-                                    else AVATAR_DISPLAY_HEIGHT_RATIO))
-    x0, y0, x1, y1 = avatar['alpha_bbox']
+    is_bookend = block.get('kind') in ('intro', 'outro')
+    if height > width:
+        avatar_height = round(height * (0.32 if is_bookend else 0.25))
+    else:
+        avatar_height = round(height * (AVATAR_BOOKEND_HEIGHT_RATIO if is_bookend
+                                        else AVATAR_DISPLAY_HEIGHT_RATIO))
+    x0, y0, x1, y1 = avatar.get('alpha_bbox', (0, 0, 100, 100))
     avatar_filter = (f'trim=end_frame={input_frames + 1},settb=1/{fps},'
                      f'setpts=PTS-STARTPTS+{frame_offset},format=rgba,'
                      f'crop={x1-x0}:{y1-y0}:{x0}:{y0},scale=-1:{avatar_height},setsar=1')
-    if scene_index == block['start_scene']:
-        avatar_filter += f',fade=t=in:st=0:d={AVATAR_MOVE_SECONDS:.3f}:alpha=1'
-    if scene_index == block['end_scene']:
-        avatar_filter += (f',fade=t=out:st={max(0.0, duration-AVATAR_MOVE_SECONDS):.3f}:'
-                          f'd={AVATAR_MOVE_SECONDS:.3f}:alpha=1')
+    if height > width:
+        if is_bookend and scene_index == 0:
+            avatar_filter += f',fade=t=in:st=0:d={AVATAR_MOVE_SECONDS:.3f}:alpha=1'
+        elif is_bookend and not has_next:
+            avatar_filter += (f',fade=t=out:st={max(0.0, duration-AVATAR_MOVE_SECONDS):.3f}:'
+                              f'd={AVATAR_MOVE_SECONDS:.3f}:alpha=1')
+    else:
+        if scene_index == block.get('start_scene', scene_index):
+            avatar_filter += f',fade=t=in:st=0:d={AVATAR_MOVE_SECONDS:.3f}:alpha=1'
+        if scene_index == block.get('end_scene', scene_index):
+            avatar_filter += (f',fade=t=out:st={max(0.0, duration-AVATAR_MOVE_SECONDS):.3f}:'
+                              f'd={AVATAR_MOVE_SECONDS:.3f}:alpha=1')
     filters.append(f'[{avatar_input}:v]{avatar_filter}[{prefix}_avatar]')
 
-    side_margin = round(AVATAR_SIDE_MARGIN * width / 1280)
-    bottom_margin = round(AVATAR_BOTTOM_MARGIN * height / 720)
+    side_margin = round(AVATAR_SIDE_MARGIN * width / (1080 if height > width else 1280))
+    bottom_margin = round(160 * height / 1920) if height > width else round(AVATAR_BOTTOM_MARGIN * height / 720)
 
     def x_for(position):
         if position == 'left':
@@ -1077,25 +1332,27 @@ def append_scene_visual(inputs, filters, scene, scene_index, block, manifest, pr
 
     x = x_for(block['position'])
     from_x = x_for(block.get('from_position', block['position']))
-    if scene_index == block['start_scene'] and from_x != x:
+    if scene_index == block.get('start_scene', scene_index) and from_x != x:
         x = (f"'if(lt(t,{AVATAR_MOVE_SECONDS:.3f}),({from_x})+"
              f"(({x})-({from_x}))*t/{AVATAR_MOVE_SECONDS:.3f},{x})'")
     y = '(main_h-overlay_h)/2' if is_bookend else f'main_h-overlay_h-{bottom_margin}'
-    avatar_end = duration if scene_index == block['end_scene'] else duration + (fade_frames / fps if has_next else 0)
+    avatar_end = duration if scene_index == block.get('end_scene', scene_index) else duration + (fade_frames / fps if has_next else 0)
     filters.append(
         f'[{prefix}_image][{prefix}_avatar]overlay=x={x}:y={y}:eof_action=pass:'
         f"shortest=1:enable='between(t,0,{avatar_end:.6f})'[{prefix}_with_avatar]"
     )
     current = f'{prefix}_with_avatar'
-    if block['kind'] == 'outro':
+    if block.get('kind') == 'outro':
         cta_input = len(inputs)
         inputs.append((OUTRO_CTA_IMAGE, input_frames + 1))
-        cta_width = round(width * OUTRO_CTA_WIDTH_RATIO)
+        cta_ratio = 0.85 if height > width else OUTRO_CTA_WIDTH_RATIO
+        cta_width = round(width * cta_ratio)
         with Image.open(OUTRO_CTA_IMAGE) as cta_image:
             source_width, source_height = cta_image.size
         cta_height = round(cta_width * source_height / source_width)
         cta_x = (width - cta_width) // 2
-        cta_y = height - round(OUTRO_CTA_BOTTOM_MARGIN * height / 720) - cta_height
+        bottom_cta_margin = round(160 * height / 1920) if height > width else round(OUTRO_CTA_BOTTOM_MARGIN * height / 720)
+        cta_y = height - bottom_cta_margin - cta_height
         filters.append(
             f'[{cta_input}:v]trim=end_frame={input_frames + 1},settb=1/{fps},'
             f'setpts=PTS-STARTPTS+{frame_offset},format=rgba,scale={cta_width}:{cta_height},'
@@ -1115,7 +1372,8 @@ def render_scene_segments(scenes, output_dir, fps, width, height, style, zoom):
     counts = scene_frame_counts(scenes, fps)
     if not counts:
         raise ValueError('Cannot render a project without scenes')
-    fade_frames = min(round(0.45 * fps), min(counts) // 4) if len(counts) > 1 else 0
+    fade_seconds = 0.65 if (height > width) else 0.45
+    fade_frames = min(round(fade_seconds * fps), min(counts) // 3) if len(counts) > 1 else 0
     plan = build_avatar_plan(scenes)
     manifest = load_avatar_manifest()
     blocks = {}
@@ -1204,8 +1462,12 @@ def render_scene_segments(scenes, output_dir, fps, width, height, style, zoom):
             filters.append(f'[{current_label}]trim=end_frame={counts[index]}[out]')
         command = ['ffmpeg', '-y', '-loglevel', 'error']
         for path, frames in inputs:
-            command.extend(['-loop', '1', '-framerate', str(fps),
-                            '-t', f'{frames/fps:.9f}', '-i', str(path)])
+            path_str = str(path).lower()
+            if path_str.endswith(('.mp4', '.mov', '.webm', '.mkv')):
+                command.extend(['-stream_loop', '-1', '-i', str(path)])
+            else:
+                command.extend(['-loop', '1', '-framerate', str(fps),
+                                '-t', f'{frames/fps:.9f}', '-i', str(path)])
         temporary = dest.with_name(dest.stem + '.part.mp4')
         if temporary.is_symlink():
             raise RuntimeError(f'Refusing symlinked temporary scene path for scene {index + 1}')
@@ -1481,12 +1743,26 @@ def build_parser():
     p.add_argument('--intro-text', help='Custom spoken intro narration text override')
     p.add_argument('--outro', choices=OUTRO_PROFILES, default='default',
                    help='Mandatory outro profile (default: generic; facts-sun-le-bhai adds the branded Hindi/English call-to-action)')
-    p.add_argument('--image-provider', choices=['pexels', 'cloudflare-flux', 'flux', 'cloudflare'], default='pexels',
-                   help='Visual imagery provider: pexels (stock photos) or cloudflare-flux/flux (minimalist whiteboard stickman doodles via Cloudflare Workers AI)')
+    p.add_argument('--image-provider', choices=['pexels', 'pexels-video', 'cloudflare-flux', 'flux', 'cloudflare'], default='pexels',
+                   help='Visual imagery provider: pexels (stock photos), pexels-video (1080p motion video clips), or cloudflare-flux/flux (minimalist whiteboard stickman doodles via Cloudflare Workers AI)')
+    p.add_argument('--format', choices=['landscape', 'shorts', 'vertical'], default='landscape',
+                   help='Video format: landscape (16:9) or shorts/vertical (9:16 1080x1920)')
     return p
 
 
 def validate_cli_args(p, args):
+    if getattr(args, 'format', 'landscape') in ('shorts', 'vertical'):
+        args.format = 'shorts'
+        if args.resolution == '720p':
+            args.resolution = 'shorts'
+        if args.image_provider == 'pexels':
+            args.image_provider = 'pexels-video'
+        if args.outro == 'default':
+            args.outro = 'shorts'
+        if args.minutes == 2:
+            args.minutes = 0.85
+        if not args.music_mood:
+            args.music_mood = 'soothing'
     if getattr(args, 'image_provider', 'pexels') in ('flux', 'cloudflare'):
         args.image_provider = 'cloudflare-flux'
     if args.tts in ('puck', 'gemini-tts'):
@@ -1505,6 +1781,7 @@ def validate_cli_args(p, args):
             p.error('--voicestudio-url must be an http(s) base URL without query parameters or fragments')
         if args.voice_sample and not args.voice_sample.is_file():
             p.error(f'--voice-sample file does not exist: {args.voice_sample}')
+    return args
 
 
 def require_pipeline_prerequisites(p, args):
@@ -1515,7 +1792,7 @@ def require_pipeline_prerequisites(p, args):
     if not os.getenv('GEMINI_API_KEY'):
         p.error('Missing GEMINI_API_KEY in .env')
     if not args.dry_run:
-        if getattr(args, 'image_provider', 'pexels') == 'pexels':
+        if getattr(args, 'image_provider', 'pexels') in ('pexels', 'pexels-video'):
             if not os.getenv('PEXELS_API_KEY'):
                 p.error('Missing PEXELS_API_KEY in .env')
         elif getattr(args, 'image_provider', 'pexels') == 'cloudflare-flux':
@@ -1642,10 +1919,11 @@ def main():
         log('Resuming saved project manifest')
     else:
         require_pipeline_prerequisites(p, args)
+        is_shorts = getattr(args, 'format', 'landscape') == 'shorts'
         if prepared_project is not None:
             project = prepared_project
         elif args.idea:
-            project=narrative_from_idea(args.idea,args.language,args.minutes,args.outro)
+            project=narrative_from_idea(args.idea,args.language,args.minutes,args.outro,is_shorts=is_shorts)
         else:
             title = args.title
             if not title:
@@ -1672,7 +1950,7 @@ def main():
         project['content_narration'] = project['narration'].strip()
         scenes, intro, outro, video_narration = build_video_scenes(
             project['content_narration'], project.get('title'), args.language, project['theme'], args.outro, args.tts,
-            args.intro_text, image_provider=project['image_provider'],
+            args.intro_text, image_provider=project['image_provider'], is_shorts=is_shorts,
         )
         project['intro_narration'] = intro
         project['outro_narration'] = outro
@@ -1684,12 +1962,14 @@ def main():
         (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
     if args.dry_run:
         log(f'Dry run: {len(project["scenes"])} planned scenes with mandatory intro/outro and avatar states in {meta}');return
+    is_shorts = getattr(args, 'format', 'landscape') == 'shorts'
+    width, height = VIDEO_RESOLUTIONS[args.resolution]
     scenes=project['scenes']
     effective_image_provider = getattr(args, 'image_provider', project.get('image_provider', 'pexels'))
     if effective_image_provider == 'pexels':
         gather_images(scenes, project['theme'], args.output/'images')
     else:
-        gather_images(scenes, project['theme'], args.output/'images', image_provider=effective_image_provider)
+        gather_images(scenes, project['theme'], args.output/'images', image_provider=effective_image_provider, width=width, height=height)
     write_json_atomic(meta,project)
     narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
     if args.tts == 'voicestudio':
@@ -1701,7 +1981,10 @@ def main():
     content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
     bookend_length = sum(scene['duration'] for scene in scenes if scene.get('kind') != 'content')
     content_target = max(0, 60 * args.minutes - bookend_length)
-    if args.idea and project.get('content_narration') and content_length < content_target*(1-args.duration_tolerance):
+    if is_shorts and (content_length + bookend_length) >= 42.0:
+        # YouTube Shorts duration is strictly capped under 60 seconds (target 48-54s)
+        pass
+    elif args.idea and project.get('content_narration') and content_length < content_target*(1-args.duration_tolerance):
         # At most two continuations, avoiding endless retries and preserving old audio.
         for attempt in range(2):
             deficit=content_target-content_length
@@ -1710,7 +1993,7 @@ def main():
             if effective_image_provider == 'pexels':
                 added=plan_scenes(extra,project['language'],project['theme'],args.tts)
             else:
-                added=plan_scenes(extra,project['language'],project['theme'],args.tts,image_provider=effective_image_provider)
+                added=plan_scenes(extra,project['language'],project['theme'],args.tts,image_provider=effective_image_provider,is_shorts=is_shorts)
             for scene in added:
                 scene['kind'] = 'content'
             scenes[-1:-1] = added
@@ -1726,7 +2009,7 @@ def main():
             if effective_image_provider == 'pexels':
                 gather_images(scenes,project['theme'],args.output/'images')
             else:
-                gather_images(scenes,project['theme'],args.output/'images',image_provider=effective_image_provider)
+                gather_images(scenes,project['theme'],args.output/'images',image_provider=effective_image_provider,width=width,height=height)
             narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
             if args.tts == 'voicestudio':
                 narrate_args.extend([getattr(args, 'voicestudio_url', None), getattr(args, 'voice_sample', None), getattr(args, 'voicestudio_speed', None)])
@@ -1735,6 +2018,8 @@ def main():
             content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
             project['avatar_plan'] = build_avatar_plan(scenes)
             write_json_atomic(meta,project)
+            if is_shorts and (content_length + bookend_length) >= 50.0:
+                break
             if content_length >= content_target*(1-args.duration_tolerance): break
         if abs(content_length-content_target)>content_target*args.duration_tolerance:
             log(f'WARNING: Main content is {content_length:.1f}s versus {content_target:.1f}s target; no artificial slowdown applied.')

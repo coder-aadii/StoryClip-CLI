@@ -63,6 +63,25 @@ Generate YouTube whiteboard explainer stickman and doodle illustrations using Cl
 - Zero local GPU stress (serverless cloud GPUs generate each scene in ~2 seconds).
 - `flux` and `cloudflare` are accepted as convenient aliases for `--image-provider cloudflare-flux`.
 
+Generate vertical YouTube Shorts (1080x1920, strictly under 1 minute, rapid 3–4s 1080p video B-roll cuts, soothing BGM, micro-outro):
+
+```bash
+./run_video.sh \
+  --idea "3 mind blowing facts about the deep ocean" \
+  --language hi \
+  --format shorts \
+  --tts edge-male \
+  --output outputs/ocean-facts-shorts
+```
+
+- `--format shorts` (or `--format vertical`) automatically sets:
+  - Resolution: `1080x1920` vertical 9:16 portrait.
+  - Image provider: `pexels-video` (high-definition 1080p motion video clips from Pexels Video API; camera motion is preserved without synthetic zoom).
+  - B-roll visual cuts: Rapid 3.2–4.0 second dynamic video cuts decoupled from sentence pauses.
+  - Duration: Strictly under 60 seconds (target 48–54s).
+  - Outro: `shorts` compact 4-second micro call-to-action with blurred backdrop.
+  - BGM: Automatically selects theme-matched soothing/relaxing instrumental music from `storage/BGM/`.
+
 Use `--tts gemini` (or `--tts puck`) for Puck narration (upbeat and lively male voice preset) in continuous chunks targeting 60–90 seconds. Images still switch at short visual scene boundaries (roughly 10 seconds), with local alignment setting their actual timing and SRT cues. Intro/outro remain separate. `--tts auto` and other providers retain per-scene synthesis. Choose a fresh `--output` directory for an older Gemini project; its saved scene layout will be rejected without modifying its media.
 
 Before using Gemini narration, install the local alignment dependencies:

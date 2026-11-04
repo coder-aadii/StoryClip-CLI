@@ -169,10 +169,10 @@ def expand_to_landscape_16_9(
     image_bytes: bytes,
     target_resolution: tuple[int, int] | None = (1280, 720),
 ) -> bytes:
-    """Seamlessly expand a square/non-16:9 doodle image to 16:9 landscape.
+    """Seamlessly adapt a square/non-standard doodle image to landscape 16:9 or vertical 9:16.
 
-    Samples background color from corners and borders, and replicates the edge
-    columns outwards to preserve any continuous ground/floor lines seamlessly.
+    Samples background color from corners and borders, and replicates edge columns
+    or rows outwards to preserve any continuous ground/floor lines seamlessly.
     """
     try:
         from PIL import Image
@@ -183,20 +183,18 @@ def expand_to_landscape_16_9(
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         w, h = img.size
+        tw, th = target_resolution if target_resolution else (1280, 720)
+
+        # Check if already approximately matching target aspect ratio (± 0.05)
         current_ratio = w / h
-        # If already approximately 16:9 (ratio 1.777 ± 0.05)
-        if abs(current_ratio - (16 / 9)) < 0.05:
-            if target_resolution and (w, h) != target_resolution:
-                resized = img.resize(target_resolution, Image.Resampling.LANCZOS)
+        target_ratio = tw / th
+        if abs(current_ratio - target_ratio) < 0.05:
+            if (w, h) != (tw, th):
+                resized = img.resize((tw, th), Image.Resampling.LANCZOS)
                 buf = io.BytesIO()
                 resized.save(buf, format="JPEG", quality=95)
                 return buf.getvalue()
             return image_bytes
-
-        # Calculate 16:9 dimensions based on height
-        target_w = int(round(h * 16 / 9))
-        pad_left = (target_w - w) // 2
-        pad_right = target_w - w - pad_left
 
         # Sample background color from top corners and borders
         arr = np.array(img)
@@ -208,14 +206,32 @@ def expand_to_landscape_16_9(
         ], axis=0)
         bg_color = tuple(np.median(sample, axis=0).astype(int))
 
-        # Build expanded canvas
-        canvas = Image.new("RGB", (target_w, h), bg_color)
-        left_col = img.crop((0, 0, 1, h)).resize((pad_left, h), Image.Resampling.NEAREST)
-        right_col = img.crop((w - 1, 0, w, h)).resize((pad_right, h), Image.Resampling.NEAREST)
+        if th > tw:
+            # Vertical portrait 9:16 canvas: pad top and bottom
+            target_h = int(round(w * th / tw))
+            pad_top = (target_h - h) // 2
+            pad_bottom = target_h - h - pad_top
 
-        canvas.paste(left_col, (0, 0))
-        canvas.paste(img, (pad_left, 0))
-        canvas.paste(right_col, (pad_left + w, 0))
+            canvas = Image.new("RGB", (w, target_h), bg_color)
+            top_row = img.crop((0, 0, w, 1)).resize((w, pad_top), Image.Resampling.NEAREST)
+            bottom_row = img.crop((0, h - 1, w, h)).resize((w, pad_bottom), Image.Resampling.NEAREST)
+
+            canvas.paste(top_row, (0, 0))
+            canvas.paste(img, (0, pad_top))
+            canvas.paste(bottom_row, (0, pad_top + h))
+        else:
+            # Landscape 16:9 canvas: pad left and right
+            target_w = int(round(h * tw / th))
+            pad_left = (target_w - w) // 2
+            pad_right = target_w - w - pad_left
+
+            canvas = Image.new("RGB", (target_w, h), bg_color)
+            left_col = img.crop((0, 0, 1, h)).resize((pad_left, h), Image.Resampling.NEAREST)
+            right_col = img.crop((w - 1, 0, w, h)).resize((pad_right, h), Image.Resampling.NEAREST)
+
+            canvas.paste(left_col, (0, 0))
+            canvas.paste(img, (pad_left, 0))
+            canvas.paste(right_col, (pad_left + w, 0))
 
         if target_resolution:
             canvas = canvas.resize(target_resolution, Image.Resampling.LANCZOS)
@@ -224,7 +240,7 @@ def expand_to_landscape_16_9(
         canvas.save(out_buf, format="JPEG", quality=95)
         return out_buf.getvalue()
     except Exception as ex:
-        log(f"Warning: Failed to expand image to 16:9 landscape ({ex}); using original")
+        log(f"Warning: Failed to adapt image aspect ratio ({ex}); using original")
         return image_bytes
 
 

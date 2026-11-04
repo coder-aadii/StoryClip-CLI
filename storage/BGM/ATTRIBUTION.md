@@ -1,11 +1,15 @@
 # Background music catalog
 
-Downloaded on 2026-10-28 from Mixkit's official MP3 CDN. Track files are for use as part of video projects under the [Mixkit Stock Music Free License](https://mixkit.co/license/modal/musicFree/); do not redistribute them as standalone music files. The license allows online video use, including YouTube, and excludes TV/radio broadcast, CDs/DVDs, and video games. Attribution is not required by Mixkit, but source details are recorded here. Local durations below reflect the current trimmed files.
+Tracks are for use as part of video projects under royalty-free / stock music licenses; do not redistribute them as standalone music files. The license allows online video use, including YouTube Shorts and long-form video.
 
-| Local file | Track | Creator | Duration | Mixkit listing | Direct source |
-|---|---|---|---:|---|---|
-| `science_explanation_theme_1.mp3` | Moon Walk | Eugenio Mininni | 3:04.76 | [Science music](https://mixkit.co/free-stock-music/tag/science/) | `https://assets.mixkit.co/music/609/609.mp3` |
-| `horror_theme_1.mp3` | Piano Horror | Francisco Alvear | 1:33.07 | [Horror music](https://mixkit.co/free-stock-music/tag/horror/) | `https://assets.mixkit.co/music/671/671.mp3` |
-| `mystery_theme_1.mp3` | Echoes | Andrew Ev | 3:21.38 | [Horror / atmospheric music](https://mixkit.co/free-stock-music/tag/horror/) | `https://assets.mixkit.co/music/188/188.mp3` |
-| `nature_documentary_theme_1.mp3` | Forest Mist Whispers | Alejandro Magaña (A. M.) | 2:10.97 | [Ambient music](https://mixkit.co/free-stock-music/ambient/) | `https://assets.mixkit.co/music/148/148.mp3` |
-| `technology_theme_1.mp3` | Digital Clouds | Alejandro Magaña (A. M.) | 1:21.06 | [Technology music](https://mixkit.co/free-stock-music/tag/technology/) | `https://assets.mixkit.co/music/175/175.mp3` |
+| Local file | Mood / Theme | Duration | Description |
+|---|---|---:|---|
+| `relaxing_theme_1.mp3` | Relaxing / Meditation | 1:39.52 | Calming ambient synth pads, peaceful and meditative |
+| `relaxing_theme_2.mp3` | Relaxing / Chill | 3:06.04 | Mellow chill acoustic chord progressions and soft piano |
+| `energetic_theme_1.mp3` | Energetic / Upbeat | 2:09.79 | Dynamic, uplifting rhythm suitable for fast-paced explainers |
+| `energetic_theme_2.mp3` | Energetic / Rock | 1:09.30 | Driving energetic rhythm with punchy electric guitar energy |
+| `technology_theme_1.mp3` | Technology / Cyber | 1:21.06 | Digital Clouds by Alejandro Magaña; futuristic electronic pulses |
+| `nature_documentary_theme_1.mp3` | Nature / Organic | 2:10.97 | Forest Mist Whispers by Alejandro Magaña; lush ambient nature |
+| `science_explanation_theme_1.mp3` | Science / Curio | 3:04.76 | Moon Walk by Eugenio Mininni; curious, lightweight scientific tempo |
+| `mystery_theme_1.mp3` | Mystery / Investigative | 3:21.38 | Echoes by Andrew Ev; atmospheric investigative drone |
+| `horror_theme_1.mp3` | Horror / Suspense | 1:33.07 | Piano Horror by Francisco Alvear; dark suspenseful piano chords |
