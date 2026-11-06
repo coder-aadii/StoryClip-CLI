@@ -240,7 +240,9 @@ def script_title_from_llm(content, language):
     return None
 
 
-def intro_narration(title, language):
+def intro_narration(title, language, is_shorts=False):
+    if is_shorts:
+        return 'तो क्या हाल है दोस्तों!' if language == 'hi' else "What's up friends!"
     display_title = re.sub(r'[_-]+', ' ', str(title or '')).strip()
     if not display_title or (language == 'hi' and re.search(r'[a-zA-Z]', display_title)):
         display_title = 'आज का विशेष विषय' if language == 'hi' else "today's topic"
@@ -273,14 +275,14 @@ def outro_narration(profile, language):
             'See you in the next video. Bye!')
 
 
-def compose_narration(content, title, language, outro_profile, intro_text=None):
-    intro = intro_text.strip() if intro_text else intro_narration(title, language)
+def compose_narration(content, title, language, outro_profile, intro_text=None, is_shorts=False):
+    intro = intro_text.strip() if intro_text else intro_narration(title, language, is_shorts)
     outro = outro_narration(outro_profile, language)
     return intro, outro, '\n\n'.join((intro, content.strip(), outro))
 
 
 def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None, image_provider='pexels', is_shorts=False):
-    intro, outro, full_narration = compose_narration(content, title, language, outro_profile, intro_text)
+    intro, outro, full_narration = compose_narration(content, title, language, outro_profile, intro_text, is_shorts)
     if image_provider == 'pexels':
         content_scenes = plan_scenes(content, language, theme, tts_provider, is_shorts=is_shorts)
     else:
@@ -701,7 +703,7 @@ def plan_scenes(narration, language, theme, tts_provider='edge', image_provider=
             'text': segment,
             'query': mapping.get(i, {}).get('query') or theme,
             'image': None,
-            'mood': classify_mood(segment + ' ' + theme),
+            'mood': 'joy' if is_shorts else classify_mood(segment + ' ' + theme),
             'avatar_cue': mapping.get(i, {}).get('avatar_cue', 'explanation'),
         }
         for i, segment in enumerate(groups)

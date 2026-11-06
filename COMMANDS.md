@@ -148,3 +148,39 @@ Zero-shot voice cloning using a reference WAV sample:
 ```
 
 The finished video is saved as `outputs/<name>/final.mp4`; subtitles are in `outputs/<name>/subtitles.srt`.
+
+## Complete Flag Reference
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--idea` | string | required* | One-line idea for the video (mutually exclusive with `--script`) |
+| `--script` | Path | required* | Existing UTF-8 script file path (mutually exclusive with `--idea`) |
+| `--language` | choice | `hi` | Language for narration: `hi` (Hindi/Devanagari) or `en` (English) |
+| `--minutes` | float | `2` | Approximate target length for idea-to-script generation (0-60 minutes) |
+| `--tts` | choice | `edge` | Narrator: `edge`, `edge-female`, `edge-male`, `edge-male-energetic`, `gemini`, `gemini-tts`, `puck`, `auto`, `indic-parler`, `voicestudio` |
+| `--indic-url` | string | `http://127.0.0.1:8765` | Base URL for Indic Parler TTS service (from `INDIC_PARLER_URL` env) |
+| `--indic-voice` | choice | `Divya` | Voice for Indic Parler TTS: `Divya`, `Rohit`, `Aman`, `Rani` (from `INDIC_PARLER_VOICE` env) |
+| `--voicestudio-url` | string | `http://127.0.0.1:38123` | Base URL for local VoiceStudio TTS service (from `VOICESTUDIO_URL` env) |
+| `--voice-sample` | Path | — | Reference audio file (.wav) for VoiceStudio zero-shot voice cloning |
+| `--voicestudio-speed` | float | `1.15` | Speech rate multiplier for VoiceStudio TTS (from `VOICESTUDIO_SPEED` env) |
+| `--output` | Path | auto | Output directory (default: `outputs/<story-name>`) |
+| `--keep-intermediates` | flag | false | Retain generated scripts, media caches, and clips after successful render |
+| `--theme` | string | — | English Pexels theme search override |
+| `--music-mood` | string | — | Comma-separated Jamendo search moods |
+| `--music-rights-confirmed` | flag | false | Use Jamendo candidates only after separately clearing sync/commercial rights and confirming interactively |
+| `--skip-music` | flag | false | Disable background music |
+| `--dry-run` | flag | false | Stop after script, scenes and search queries are planned (no images/TTS/render) |
+| `--fps` | int | `24` | Frames per second for video output |
+| `--resolution` | choice | `720p` | Output size: `720p`, `1080p`, `2160p`, `shorts`, `vertical`, `shorts-720`, `shorts-1080` |
+| `--style` | choice | `auto` | Visual grading: `auto` (follows scene mood), `horror`, `joy`, `neutral` |
+| `--no-zoom` | flag | false | Disable Ken Burns zoom effect on still images |
+| `--bgm-file` | Path | — | Local music file for which you have suitable video-sync rights |
+| `--bgm-volume` | float | `0.09` | BGM linear volume from 0 to 1 |
+| `--duration-tolerance` | float | `0.07` | Fractional tolerance for idea-generated videos' content length |
+| `--title` | string | — | Video title override (used for intro narration and project metadata) |
+| `--intro-text` | string | — | Custom spoken intro narration text override |
+| `--outro` | choice | `default` | Outro profile: `default`, `facts-sun-le-bhai`, `shorts` |
+| `--image-provider` | choice | `pexels` | Visual imagery provider: `pexels` (photos), `pexels-video` (1080p video clips), `cloudflare-flux`/`flux`/`cloudflare` (minimalist whiteboard doodles via Cloudflare Workers AI) |
+| `--format` | choice | `landscape` | Video format: `landscape` (16:9), `shorts`/`vertical` (9:16 1080x1920) |
+
+* Exactly one of `--idea` or `--script` is required.
