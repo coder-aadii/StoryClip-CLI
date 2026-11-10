@@ -41,6 +41,23 @@ class AutomaticOutputTests(unittest.TestCase):
         self.assertIn('lowercase ASCII', gemini.call_args.args[0])
         self.assertIn('Proper Intro Setup', gemini.call_args.args[0])
         self.assertIn('Strong Conclusion', gemini.call_args.args[0])
+        self.assertIn('strictly Latin/English characters', gemini.call_args.args[0])
+        self.assertNotIn('zero Latin/English characters', gemini.call_args.args[0])
+
+    def test_narrative_prompt_requests_hindi_for_hi_language(self):
+        result = {
+            'title': 'मेले की कहानी',
+            'output_slug': 'mele-ki-kahani',
+            'narration': 'यह मेले की कहानी है जो पर्याप्त लंबी है।',
+            'theme': 'colorful village fair',
+            'music_moods': ['hopeful', 'warm'],
+        }
+        with patch.object(video_cli, 'gemini_json', return_value=result) as gemini:
+            self.assertEqual(video_cli.narrative_from_idea('मेले में बच्चा', 'hi', 2), result)
+
+        prompt = gemini.call_args.args[0]
+        self.assertIn('Devanagari script', prompt)
+        self.assertIn('zero Latin/English characters', prompt)
 
     def test_slug_is_sanitized_and_has_non_ascii_fallback(self):
         self.assertEqual(

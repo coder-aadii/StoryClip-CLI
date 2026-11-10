@@ -141,7 +141,18 @@ def narrative_from_idea(idea, language, minutes, outro_profile='default', is_sho
         'Do NOT write formal textbook prose or open with a generic "क्या आप जानते हैं?". '
         'Use a specific situational hook, explain concepts simply with relatable examples, and deliver an entertaining payoff. '
     ) if language == 'hi' else (
+        'Language: Pure English strictly written in the Latin alphabet. '
+        'Do NOT use Hindi or Devanagari script anywhere in the narration text. '
         'Narration tone: Conversational, engaging, natural spoken explainer that connects warmly with the audience. '
+    )
+    schema_guidance = (
+        'Return JSON object with keys "title" (short text in Devanagari script for Hindi), "output_slug" (2-8 lowercase ASCII words '
+        'separated only by hyphens, suitable for a folder name), "narration" (continuous spoken text in Devanagari script for Hindi, zero Latin/English characters), '
+        '"theme" (2-4 English words describing photo background), "music_moods" (array of 2 English keywords).'
+    ) if language == 'hi' else (
+        'Return JSON object with keys "title" (short text in English), "output_slug" (2-8 lowercase ASCII words '
+        'separated only by hyphens, suitable for a folder name), "narration" (continuous spoken text in English, strictly Latin/English characters, zero Devanagari/Hindi characters), '
+        '"theme" (2-4 English words describing photo background), "music_moods" (array of 2 English keywords).'
     )
     prompt=(f'Create an engaging spoken explainer script for an educational video. {pace_note}'
             f'Language: {"Pure Hindi strictly in Devanagari script (देवनागरी)" if language=="hi" else "English"}. Idea: {idea}. '
@@ -154,9 +165,7 @@ def narrative_from_idea(idea, language, minutes, outro_profile='default', is_sho
             'Separate channel greetings and subscribe calls-to-action are added as separate video bookends, so do not include channel welcomes or subscribe sign-offs. '
             'For science, history, or factual topics, distinguish established facts from uncertainty and do not invent claims. '
             'Satisfy the requested length without repetition. No time codes, camera directions, headings, or music directions. '
-            'Return JSON object with keys "title" (short text in Devanagari script for Hindi), "output_slug" (2-8 lowercase ASCII words '
-            'separated only by hyphens, suitable for a folder name), "narration" (continuous spoken text in Devanagari script for Hindi, zero Latin/English characters), '
-            '"theme" (2-4 English words describing photo background), "music_moods" (array of 2 English keywords).')
+            f'{schema_guidance}')
     result=gemini_json(prompt)
     if not isinstance(result.get('narration'),str) or len(result['narration'])<30: raise ValueError('Gemini returned empty narration')
     return result
@@ -1838,7 +1847,8 @@ def main():
         else:
             if args.idea:
                 require_pipeline_prerequisites(p, args)
-                prepared_project = narrative_from_idea(args.idea,args.language,args.minutes,args.outro)
+                is_shorts = getattr(args, 'format', 'landscape') == 'shorts'
+                prepared_project = narrative_from_idea(args.idea,args.language,args.minutes,args.outro,is_shorts=is_shorts)
                 suggested_slug = prepared_project.get('output_slug') or prepared_project.get('title')
                 fallback_seed = args.idea
             else:
