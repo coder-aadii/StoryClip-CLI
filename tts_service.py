@@ -152,9 +152,14 @@ def gemini_speak(text, dest, language, mood='neutral'):
                 f'retry {attempt + 1}/{GEMINI_TTS_MAX_ATTEMPTS}'
             )
             time.sleep(delay)
-    parts=response.candidates[0].content.parts
-    blob=next((p.inline_data for p in parts if getattr(p,'inline_data',None)),None)
-    if not blob or not blob.data:raise RuntimeError('Gemini returned no audio')
+    candidates = getattr(response, 'candidates', None) or []
+    candidate = candidates[0] if candidates else None
+    content = getattr(candidate, 'content', None) if candidate else None
+    parts = getattr(content, 'parts', None) if content else []
+    blob = next((p.inline_data for p in (parts or []) if getattr(p, 'inline_data', None)), None)
+    if not blob or not blob.data:
+        finish_reason = getattr(candidate, 'finish_reason', 'UNKNOWN') if candidate else 'NO_CANDIDATES'
+        raise RuntimeError(f'Gemini returned no audio (finish_reason: {finish_reason})')
     data=blob.data
     if data[:4]==b'RIFF':dest.write_bytes(data)
     else:

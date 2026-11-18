@@ -290,12 +290,9 @@ def compose_narration(content, title, language, outro_profile, intro_text=None, 
     return intro, outro, '\n\n'.join((intro, content.strip(), outro))
 
 
-def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None, image_provider='pexels', is_shorts=False):
+def build_video_scenes(content, title, language, theme, outro_profile, tts_provider='edge', intro_text=None, image_provider='pexels-video', is_shorts=False):
     intro, outro, full_narration = compose_narration(content, title, language, outro_profile, intro_text, is_shorts)
-    if image_provider == 'pexels':
-        content_scenes = plan_scenes(content, language, theme, tts_provider, is_shorts=is_shorts)
-    else:
-        content_scenes = plan_scenes(content, language, theme, tts_provider, image_provider=image_provider, is_shorts=is_shorts)
+    content_scenes = plan_scenes(content, language, theme, tts_provider, image_provider=image_provider, is_shorts=is_shorts)
     for scene in content_scenes:
         scene['kind'] = 'content'
     if image_provider == 'cloudflare-flux':
@@ -306,7 +303,7 @@ def build_video_scenes(content, title, language, theme, outro_profile, tts_provi
         )
         outro_query = f"{theme} blurred outro backdrop"
     elif image_provider == 'pexels-video':
-        intro_query = f"{theme} technology introduction"
+        intro_query = f"{theme} technology introduction" if is_shorts else f"{theme} cinematic introduction"
         outro_query = f"{theme} outro background"
     else:
         intro_query = f'{theme} educational introduction'
@@ -330,9 +327,8 @@ def build_video_scenes(content, title, language, theme, outro_profile, tts_provi
             'avatar_cue': 'celebration',
         },
     ]
-    if is_shorts:
-        for s in scenes:
-            s['is_shorts'] = True
+    for s in scenes:
+        s['is_shorts'] = is_shorts
     return scenes, intro, outro, full_narration
 
 
@@ -448,7 +444,7 @@ def avatar_pose_for_block(scenes, position, previous_pose=None, block_index=0):
 
 def build_avatar_plan(scenes):
     manifest = load_avatar_manifest()
-    is_shorts = any(bool(s.get('is_shorts')) or bool(s.get('is_video')) or str(s.get('image', '')).endswith(('.mp4', '.mov')) for s in scenes)
+    is_shorts = any(bool(s.get('is_shorts')) or (s.get('is_shorts') is None and (bool(s.get('is_video')) or str(s.get('image', '')).endswith(('.mp4', '.mov')))) for s in scenes)
     if is_shorts:
         blocks = []
         previous_position = 'center'
@@ -652,13 +648,14 @@ def scene_chunking(tts_provider):
     return 'gemini-aligned-short-v2' if tts_provider == 'gemini' else 'short-v1'
 
 
-def plan_scenes(narration, language, theme, tts_provider='edge', image_provider='pexels', is_shorts=False):
+def plan_scenes(narration, language, theme, tts_provider='edge', image_provider='pexels-video', is_shorts=False):
     log('Planning scene imagery using Gemini')
     groups = narration_groups(narration, language, tts_provider, is_shorts=is_shorts)
     query_text = '\n'.join(f'{i}: {g[:420]}' for i, g in enumerate(groups))
     if image_provider == 'pexels-video':
+        video_kind = 'PORTRAIT VIDEO' if is_shorts else 'LANDSCAPE/WIDESCREEN VIDEO'
         prompt = (
-            f'For every numbered narration segment, suggest one cinematic Pexels PORTRAIT VIDEO search query (2 to 5 English keywords) '
+            f'For every numbered narration segment, suggest one cinematic Pexels {video_kind} search query (2 to 5 English keywords) '
             f'depicting dynamic real-world action or movement relevant to the narration. '
             f'Narration language {language}; theme: {theme}. '
             'Queries MUST be ENGLISH, concrete, physical motion (e.g. "robot working in lab", "neural network code", "futuristic laboratory", "person typing laptop"). '
@@ -738,12 +735,13 @@ def fetch_file(url, path, max_bytes=25_000_000):
     if size<512: raise RuntimeError('Downloaded file unexpectedly small')
 
 
-def gather_images(scenes, theme, folder, image_provider='pexels', width=1280, height=720):
+def gather_images(scenes, theme, folder, image_provider='pexels-video', width=1280, height=720):
     folder.mkdir(exist_ok=True,parents=True)
     if image_provider == 'pexels-video':
         from pexels_video_provider import pexels_video_search, download_video_file, extract_broll_clip
         progress_started = time.monotonic()
         used_ids = set()
+        orientation = 'portrait' if height > width else 'landscape'
         for i, sc in enumerate(scenes):
             if sc.get('kind') == 'outro' and i > 0:
                 dest = folder / 'outro_blurred.mp4'
@@ -755,7 +753,7 @@ def gather_images(scenes, theme, folder, image_provider='pexels', width=1280, he
                         break
                 if prev_video:
                     if not (dest.is_file() and dest.stat().st_size >= 10240):
-                        outro_dur = float(sc.get('duration') or 4.0)
+                        outro_dur = float(sc.get('duration') or (4.0 if height > width else 10.0))
                         cmd = [
                             'ffmpeg', '-y', '-t', f'{outro_dur:.2f}', '-i', str(prev_video),
                             '-vf', 'boxblur=20:5,setsar=1',
@@ -783,10 +781,31 @@ def gather_images(scenes, theme, folder, image_provider='pexels', width=1280, he
                 log_progress('Videos', i+1, len(scenes), progress_started)
                 continue
 
-            log(f"Searching Pexels 1080p Video for scene {i+1}/{len(scenes)}: {sc['query'][:50]}")
-            candidates = pexels_video_search(sc['query'], count=8, orientation='portrait')
+            log(f"Searching Pexels Video for scene {i+1}/{len(scenes)}: {sc['query'][:50]}")
+            try:
+                candidates = pexels_video_search(
+                    sc['query'], count=8, orientation=orientation, target_width=width, target_height=height
+                )
+            except Exception as ex:
+                log(f"Warning: Pexels Video search failed for query '{sc['query']}': {ex}")
+                candidates = []
+
             if not candidates:
-                candidates = pexels_video_search(theme, count=8, orientation='portrait')
+                try:
+                    candidates = pexels_video_search(
+                        theme, count=8, orientation=orientation, target_width=width, target_height=height
+                    )
+                except Exception as ex:
+                    log(f"Warning: Pexels Video search failed for theme '{theme}': {ex}")
+                    candidates = []
+
+            if not candidates and orientation:
+                try:
+                    candidates = pexels_video_search(
+                        sc['query'], count=8, orientation="", target_width=width, target_height=height
+                    )
+                except Exception:
+                    candidates = []
 
             downloaded = False
             candidate_pool = [c for c in (candidates or []) if c['id'] not in used_ids]
@@ -797,7 +816,13 @@ def gather_images(scenes, theme, folder, image_provider='pexels', width=1280, he
                 try:
                     raw_dest = folder / f'raw_{candidate["id"]}.mp4'
                     download_video_file(candidate['url'], raw_dest)
-                    clip_dur = float(sc.get('duration') or 3.5)
+                    if sc.get('duration'):
+                        clip_dur = float(sc['duration'])
+                    elif height > width:
+                        clip_dur = 4.0
+                    else:
+                        words = len(sc.get('text', '').split())
+                        clip_dur = max(10.0, min(25.0, words / 1.5 if words else 10.0))
                     extract_broll_clip(raw_dest, dest, duration=clip_dur, width=width, height=height)
                     sc['image'] = str(dest)
                     sc['photographer'] = candidate.get('photographer')
@@ -1754,8 +1779,8 @@ def build_parser():
     p.add_argument('--intro-text', help='Custom spoken intro narration text override')
     p.add_argument('--outro', choices=OUTRO_PROFILES, default='default',
                    help='Mandatory outro profile (default: generic; facts-sun-le-bhai adds the branded Hindi/English call-to-action)')
-    p.add_argument('--image-provider', choices=['pexels', 'pexels-video', 'cloudflare-flux', 'flux', 'cloudflare'], default='pexels',
-                   help='Visual imagery provider: pexels (stock photos), pexels-video (1080p motion video clips), or cloudflare-flux/flux (minimalist whiteboard stickman doodles via Cloudflare Workers AI)')
+    p.add_argument('--image-provider', choices=['pexels', 'pexels-video', 'cloudflare-flux', 'flux', 'cloudflare'], default='pexels-video',
+                   help='Visual imagery provider: pexels-video (motion video clips from Pexels, default), pexels (stock photos), or cloudflare-flux/flux (minimalist whiteboard stickman doodles via Cloudflare Workers AI)')
     p.add_argument('--format', choices=['landscape', 'shorts', 'vertical'], default='landscape',
                    help='Video format: landscape (16:9) or shorts/vertical (9:16 1080x1920)')
     return p
@@ -1955,7 +1980,7 @@ def main():
         project['outro_profile'] = args.outro
         project['scene_chunking'] = scene_chunking(args.tts)
         project['output_slug'] = args.output.name
-        project['image_provider'] = getattr(args, 'image_provider', 'pexels')
+        project['image_provider'] = getattr(args, 'image_provider', 'pexels-video')
         project['language']=args.language
         project['theme']=args.theme or project.get('theme') or 'cinematic landscape'
         project['music_moods']=[x.strip() for x in args.music_mood.split(',')] if args.music_mood else project.get('music_moods',['cinematic'])
@@ -1977,9 +2002,9 @@ def main():
     is_shorts = getattr(args, 'format', 'landscape') == 'shorts'
     width, height = VIDEO_RESOLUTIONS[args.resolution]
     scenes=project['scenes']
-    effective_image_provider = getattr(args, 'image_provider', project.get('image_provider', 'pexels'))
+    effective_image_provider = getattr(args, 'image_provider', project.get('image_provider', 'pexels-video'))
     if effective_image_provider == 'pexels':
-        gather_images(scenes, project['theme'], args.output/'images')
+        gather_images(scenes, project['theme'], args.output/'images', image_provider='pexels')
     else:
         gather_images(scenes, project['theme'], args.output/'images', image_provider=effective_image_provider, width=width, height=height)
     write_json_atomic(meta,project)
@@ -2003,7 +2028,7 @@ def main():
             log(f'Script shorter than target by {deficit:.1f}s; requesting meaningful continuation {attempt+1}/2')
             extra=expand_narration(project,deficit)
             if effective_image_provider == 'pexels':
-                added=plan_scenes(extra,project['language'],project['theme'],args.tts)
+                added=plan_scenes(extra,project['language'],project['theme'],args.tts,image_provider='pexels')
             else:
                 added=plan_scenes(extra,project['language'],project['theme'],args.tts,image_provider=effective_image_provider,is_shorts=is_shorts)
             for scene in added:
@@ -2019,7 +2044,7 @@ def main():
             (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
             (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
             if effective_image_provider == 'pexels':
-                gather_images(scenes,project['theme'],args.output/'images')
+                gather_images(scenes,project['theme'],args.output/'images',image_provider='pexels')
             else:
                 gather_images(scenes,project['theme'],args.output/'images',image_provider=effective_image_provider,width=width,height=height)
             narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]

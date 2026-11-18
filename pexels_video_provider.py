@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ load_dotenv()
 
 PEXELS_VIDEOS_API_URL = "https://api.pexels.com/videos/search"
 DEFAULT_TIMEOUT = 30
+MAX_PEXELS_RETRIES = 3
 MINIMUM_VIDEO_SIZE_BYTES = 50 * 1024  # 50 KB sanity threshold
 
 
@@ -34,15 +36,16 @@ def get_pexels_api_key(key: str | None = None) -> str:
     return api_key
 
 
-def select_best_portrait_file(
+def select_best_video_file(
     video_files: list[dict[str, Any]],
-    target_width: int = 1080,
-    target_height: int = 1920,
+    target_width: int = 1280,
+    target_height: int = 720,
+    orientation: str = "landscape",
 ) -> dict[str, Any] | None:
-    """Select the best portrait MP4 file closest to 1080x1920 resolution.
+    """Select the best MP4 file closest to target resolution and orientation.
 
-    Prefers exact 1080x1920, then higher resolution portrait (1440x2560, 2160x3840),
-    then 720x1280. Rejects landscape or corrupt entries.
+    Prefers exact resolution match, matching orientation (landscape vs portrait),
+    then HD resolution (at least 720p).
     """
     if not video_files:
         return None
@@ -58,18 +61,23 @@ def select_best_portrait_file(
     if not mp4_candidates:
         return None
 
-    # Filter for portrait or vertical orientation (height >= width)
-    portrait_candidates = [f for f in mp4_candidates if f["height"] >= f["width"]]
-    pool = portrait_candidates if portrait_candidates else mp4_candidates
+    is_portrait_target = (orientation == "portrait" or target_height > target_width)
+    if is_portrait_target:
+        matching = [f for f in mp4_candidates if f["height"] >= f["width"]]
+    else:
+        matching = [f for f in mp4_candidates if f["width"] >= f["height"]]
+
+    pool = matching if matching else mp4_candidates
 
     def score_candidate(f: dict[str, Any]) -> tuple[int, int, int]:
         w = int(f.get("width") or 0)
         h = int(f.get("height") or 0)
-        # Exact 1080x1920 match gets highest score
+        # Exact resolution match gets highest score
         is_exact = 1 if (w == target_width and h == target_height) else 0
-        # Penalize if smaller than 720x1280
-        is_hd = 1 if (h >= 1280 or w >= 720) else 0
-        # Prefer closest resolution to target 1080x1920 (prefers 1080p and 720p over 4K UHD)
+        # Check if HD (at least 720 in smaller dimension or matches target)
+        min_dim = min(w, h)
+        is_hd = 1 if (min_dim >= 720 or (w >= target_width and h >= target_height)) else 0
+        # Distance penalty from target resolution
         distance_penalty = -(abs(w - target_width) + abs(h - target_height))
         return (is_exact, is_hd, distance_penalty)
 
@@ -77,15 +85,35 @@ def select_best_portrait_file(
     return pool[0]
 
 
+def select_best_portrait_file(
+    video_files: list[dict[str, Any]],
+    target_width: int = 1080,
+    target_height: int = 1920,
+) -> dict[str, Any] | None:
+    """Select the best portrait MP4 file closest to 1080x1920 resolution.
+
+    Prefers exact 1080x1920, then higher resolution portrait (1440x2560, 2160x3840),
+    then 720x1280. Rejects landscape or corrupt entries.
+    """
+    return select_best_video_file(
+        video_files,
+        target_width=target_width,
+        target_height=target_height,
+        orientation="portrait",
+    )
+
+
 def pexels_video_search(
     query: str,
     count: int = 10,
     orientation: str = "portrait",
+    target_width: int | None = None,
+    target_height: int | None = None,
     api_key: str | None = None,
     session: requests.Session | None = None,
     timeout: int = DEFAULT_TIMEOUT,
 ) -> list[dict[str, Any]]:
-    """Search Pexels Videos API for portrait video candidates.
+    """Search Pexels Videos API for video candidates matching query and orientation.
 
     Returns a list of standardized video candidate dicts with direct download URLs.
     """
@@ -95,25 +123,59 @@ def pexels_video_search(
         "Authorization": token,
         "User-Agent": "storyclip-cli/1.0",
     }
-    params = {
+    params: dict[str, Any] = {
         "query": query.strip(),
-        "orientation": orientation,
         "per_page": max(1, min(20, int(count))),
     }
+    if orientation:
+        params["orientation"] = orientation
 
-    try:
-        resp = http.get(PEXELS_VIDEOS_API_URL, headers=headers, params=params, timeout=timeout)
-    except requests.exceptions.Timeout as ex:
-        raise RuntimeError(f"Pexels Video API search timed out after {timeout}s") from ex
-    except requests.exceptions.RequestException as ex:
-        raise RuntimeError(f"Pexels Video API network error: {ex}") from ex
+    # Determine resolution targets if not provided
+    if target_width is None or target_height is None:
+        if orientation == "portrait":
+            resolved_w, resolved_h = 1080, 1920
+        else:
+            resolved_w, resolved_h = 1280, 720
+    else:
+        resolved_w, resolved_h = target_width, target_height
 
-    if resp.status_code in (401, 403):
-        raise RuntimeError(f"Pexels authentication failed (HTTP {resp.status_code}). Verify PEXELS_API_KEY.")
-    if resp.status_code == 429:
-        raise RuntimeError("Pexels Video API rate limit exceeded (HTTP 429). Please retry later.")
-    if resp.status_code != 200:
-        raise RuntimeError(f"Pexels Video API search failed (HTTP {resp.status_code}): {resp.text[:200]}")
+    resp = None
+    for attempt in range(1, MAX_PEXELS_RETRIES + 1):
+        try:
+            resp = http.get(PEXELS_VIDEOS_API_URL, headers=headers, params=params, timeout=timeout)
+        except requests.exceptions.Timeout as ex:
+            if attempt < MAX_PEXELS_RETRIES:
+                delay = 2.0 * attempt
+                log(f"Pexels Video API search timed out ({timeout}s); retrying in {delay:.1f}s (attempt {attempt + 1}/{MAX_PEXELS_RETRIES})...")
+                time.sleep(delay)
+                continue
+            raise RuntimeError(f"Pexels Video API search timed out after {timeout}s (tried {MAX_PEXELS_RETRIES} times)") from ex
+        except requests.exceptions.RequestException as ex:
+            if attempt < MAX_PEXELS_RETRIES:
+                delay = 2.0 * attempt
+                log(f"Pexels Video API network error: {ex}; retrying in {delay:.1f}s (attempt {attempt + 1}/{MAX_PEXELS_RETRIES})...")
+                time.sleep(delay)
+                continue
+            raise RuntimeError(f"Pexels Video API network error: {ex}") from ex
+
+        if resp.status_code in (401, 403):
+            raise RuntimeError(f"Pexels authentication failed (HTTP {resp.status_code}). Verify PEXELS_API_KEY.")
+        if resp.status_code == 429:
+            if attempt < MAX_PEXELS_RETRIES:
+                delay = 4.0 * attempt
+                log(f"Pexels Video API rate limited (429); cooling down {delay:.1f}s (attempt {attempt + 1}/{MAX_PEXELS_RETRIES})...")
+                time.sleep(delay)
+                continue
+            raise RuntimeError("Pexels Video API rate limit exceeded (HTTP 429). Please retry later.")
+        if resp.status_code >= 500:
+            if attempt < MAX_PEXELS_RETRIES:
+                delay = 2.0 * attempt
+                log(f"Pexels Video API server error (HTTP {resp.status_code}); retrying in {delay:.1f}s...")
+                time.sleep(delay)
+                continue
+        if resp.status_code != 200:
+            raise RuntimeError(f"Pexels Video API search failed (HTTP {resp.status_code}): {resp.text[:200]}")
+        break
 
     try:
         data = resp.json()
@@ -125,7 +187,12 @@ def pexels_video_search(
     for v in videos:
         if not isinstance(v, dict):
             continue
-        best_file = select_best_portrait_file(v.get("video_files", []))
+        best_file = select_best_video_file(
+            v.get("video_files", []),
+            target_width=resolved_w,
+            target_height=resolved_h,
+            orientation=orientation,
+        )
         if not best_file or not best_file.get("link"):
             continue
 
@@ -160,29 +227,43 @@ def download_video_file(
     part_path = target.with_suffix(target.suffix + ".part")
     http = session or SESSION
 
-    try:
-        with http.get(url, stream=True, timeout=timeout) as resp:
-            resp.raise_for_status()
-            written = 0
-            with open(part_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1024 * 64):
-                    if not chunk:
-                        continue
-                    written += len(chunk)
-                    if written > max_bytes:
-                        raise RuntimeError(f"Video file exceeded maximum download size ({max_bytes} bytes)")
-                    f.write(chunk)
+    for attempt in range(1, MAX_PEXELS_RETRIES + 1):
+        try:
+            with http.get(url, stream=True, timeout=timeout) as resp:
+                resp.raise_for_status()
+                written = 0
+                with open(part_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1024 * 64):
+                        if not chunk:
+                            continue
+                        written += len(chunk)
+                        if written > max_bytes:
+                            raise RuntimeError(f"Video file exceeded maximum download size ({max_bytes} bytes)")
+                        f.write(chunk)
 
-            if written < MINIMUM_VIDEO_SIZE_BYTES:
-                raise RuntimeError(f"Downloaded video file unexpectedly small ({written} bytes)")
+                if written < MINIMUM_VIDEO_SIZE_BYTES:
+                    raise RuntimeError(f"Downloaded video file unexpectedly small ({written} bytes)")
 
-            os.replace(part_path, target)
-    finally:
-        if part_path.exists():
-            try:
-                part_path.unlink()
-            except OSError:
-                pass
+                os.replace(part_path, target)
+                return target
+        except Exception as ex:
+            if part_path.exists():
+                try:
+                    part_path.unlink()
+                except OSError:
+                    pass
+            if attempt < MAX_PEXELS_RETRIES:
+                delay = 2.0 * attempt
+                log(f"Video download attempt {attempt} failed ({ex}); retrying in {delay:.1f}s...")
+                time.sleep(delay)
+                continue
+            raise
+        finally:
+            if part_path.exists():
+                try:
+                    part_path.unlink()
+                except OSError:
+                    pass
 
     return target
 

@@ -13,7 +13,7 @@ import video_cli
 
 class ArtifactRetentionTests(unittest.TestCase):
     @staticmethod
-    def fake_images(scenes, theme, folder):
+    def fake_images(scenes, theme, folder, *args, **kwargs):
         folder.mkdir(parents=True, exist_ok=True)
         (folder / 'fallback_11.jpg').write_bytes(b'photo')
         image = folder / f'scene_{"a" * 20}.jpg'

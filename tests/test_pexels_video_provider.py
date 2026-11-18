@@ -12,6 +12,7 @@ from pexels_video_provider import (
     get_pexels_api_key,
     pexels_video_search,
     select_best_portrait_file,
+    select_best_video_file,
 )
 
 
@@ -45,6 +46,53 @@ class TestPexelsVideoProvider(unittest.TestCase):
     def test_select_best_portrait_file_empty(self):
         self.assertIsNone(select_best_portrait_file([]))
         self.assertIsNone(select_best_portrait_file([{"invalid": "data"}]))
+
+    def test_select_best_video_file_landscape_prefers_720p(self):
+        files = [
+            {"width": 1080, "height": 1920, "file_type": "video/mp4", "link": "http://example.com/portrait.mp4"},
+            {"width": 1920, "height": 1080, "file_type": "video/mp4", "link": "http://example.com/fhd_landscape.mp4"},
+            {"width": 1280, "height": 720, "file_type": "video/mp4", "link": "http://example.com/hd_landscape.mp4"},
+            {"width": 640, "height": 360, "file_type": "video/mp4", "link": "http://example.com/sd.mp4"},
+        ]
+        best = select_best_video_file(files, target_width=1280, target_height=720, orientation="landscape")
+        self.assertIsNotNone(best)
+        self.assertEqual(best["width"], 1280)
+        self.assertEqual(best["height"], 720)
+        self.assertEqual(best["link"], "http://example.com/hd_landscape.mp4")
+
+    def test_pexels_video_search_landscape(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "videos": [
+                {
+                    "id": 8888,
+                    "duration": 20,
+                    "url": "https://pexels.com/video/8888",
+                    "user": {"name": "Landscape Creator"},
+                    "video_files": [
+                        {
+                            "width": 1920,
+                            "height": 1080,
+                            "quality": "hd",
+                            "file_type": "video/mp4",
+                            "link": "https://videos.pexels.com/8888-1080p.mp4",
+                        }
+                    ],
+                }
+            ]
+        }
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_response
+
+        results = pexels_video_search("cinematic nature", orientation="landscape", count=3, api_key="test_tok", session=mock_session)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], 8888)
+        self.assertEqual(results[0]["width"], 1920)
+        self.assertEqual(results[0]["height"], 1080)
+        self.assertEqual(results[0]["photographer"], "Landscape Creator")
+        mock_session.get.assert_called_once()
+        self.assertEqual(mock_session.get.call_args.kwargs["params"]["orientation"], "landscape")
 
     def test_pexels_video_search_success(self):
         mock_response = MagicMock()
@@ -95,9 +143,30 @@ class TestPexelsVideoProvider(unittest.TestCase):
         mock_session = MagicMock()
         mock_session.get.return_value = mock_response
 
-        with self.assertRaises(RuntimeError) as ctx:
-            pexels_video_search("tech", api_key="tok", session=mock_session)
+        with patch("time.sleep"):
+            with self.assertRaises(RuntimeError) as ctx:
+                pexels_video_search("tech", api_key="tok", session=mock_session)
         self.assertIn("rate limit exceeded", str(ctx.exception))
+        self.assertEqual(mock_session.get.call_count, 3)
+
+    def test_pexels_video_search_retries_on_timeout_then_succeeds(self):
+        import requests
+        mock_success = MagicMock()
+        mock_success.status_code = 200
+        mock_success.json.return_value = {
+            "videos": [{
+                "id": 1234, "duration": 10, "url": "https://pexels.com/v/1234",
+                "video_files": [{"width": 1920, "height": 1080, "file_type": "video/mp4", "link": "http://v.mp4"}],
+            }]
+        }
+        mock_session = MagicMock()
+        mock_session.get.side_effect = [requests.exceptions.Timeout("Timeout"), mock_success]
+
+        with patch("time.sleep"):
+            results = pexels_video_search("food", orientation="landscape", api_key="tok", session=mock_session)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], 1234)
+        self.assertEqual(mock_session.get.call_count, 2)
 
     def test_download_video_file_atomic_write(self):
         with tempfile.TemporaryDirectory() as tmpdir:

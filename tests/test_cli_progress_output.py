@@ -124,10 +124,11 @@ class AutomaticOutputTests(unittest.TestCase):
 
     def test_build_video_scenes_accepts_custom_intro_text(self):
         custom = 'तो क्या हाल है दोस्तों! आज हम जानेंगे कि सोना इतना कीमती क्यों है।'
-        scenes, intro, outro, full = video_cli.build_video_scenes(
-            'यह मुख्य कहानी है।', 'gold_script', 'hi', 'gold', 'default', 'edge',
-            intro_text=custom,
-        )
+        with patch.object(video_cli, 'gemini_json', return_value={'queries': [{'id': 0, 'query': 'gold', 'avatar_cue': 'explanation'}]}):
+            scenes, intro, outro, full = video_cli.build_video_scenes(
+                'यह मुख्य कहानी है।', 'gold_script', 'hi', 'gold', 'default', 'edge',
+                intro_text=custom,
+            )
         self.assertEqual(scenes[0]['text'], custom)
         self.assertEqual(intro, custom)
         self.assertTrue(full.startswith(custom))
