@@ -570,25 +570,134 @@ def build_avatar_plan(scenes):
     }
 
 
+def sentences(text):
+    # Hindi danda and sentence-final English punctuation; do not split on abbreviations perfectly.
+    chunks = re.split(r'(?<=[.!?।！？])\s+|(?<=।)(?=[^\s])', re.sub(r'\s+', ' ', text.strip()))
+    return [s.strip() for s in chunks if s.strip()]
+
+
+def _normalize_words(text):
+    cleaned = ''.join(c for c in text if not unicodedata.category(c).startswith(('P', 'S'))).lower()
+    return [w for w in cleaned.split() if w]
+
+
+def _get_ngrams(words, n=4):
+    if len(words) < n:
+        return set()
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def filter_continuation_duplicates(existing_text, continuation_text, max_overlap_ratio=0.50, min_words=6):
+    """Filters out sentences from continuation_text that repeat or paraphrase existing_text.
+
+    Returns non-duplicate continuation text, or '' if most sentences are redundant.
+    """
+    if not continuation_text or not continuation_text.strip():
+        return ''
+
+    existing_sents = sentences(existing_text)
+    cont_sents = sentences(continuation_text)
+    if not cont_sents:
+        return ''
+
+    existing_word_sets = []
+    existing_normalized_sents = []
+    all_existing_words = []
+    for es in existing_sents:
+        ew = _normalize_words(es)
+        if ew:
+            existing_word_sets.append(set(ew))
+            existing_normalized_sents.append(' '.join(ew))
+            all_existing_words.extend(ew)
+
+    existing_4grams = _get_ngrams(all_existing_words, n=4)
+    existing_3grams = _get_ngrams(all_existing_words, n=3)
+
+    accepted_sents = []
+    rejected_count = 0
+
+    for cs in cont_sents:
+        cw = _normalize_words(cs)
+        if not cw:
+            continue
+
+        norm_cs = ' '.join(cw)
+        if any(norm_cs == ens for ens in existing_normalized_sents):
+            rejected_count += 1
+            continue
+
+        if len(cw) < 4:
+            if norm_cs in ' '.join(all_existing_words):
+                rejected_count += 1
+                continue
+            accepted_sents.append(cs)
+            continue
+
+        c_set = set(cw)
+        is_duplicate = False
+
+        for es_set in existing_word_sets:
+            intersection = len(c_set & es_set)
+            if not intersection:
+                continue
+            jaccard = intersection / len(c_set | es_set)
+            if jaccard >= 0.55 or (len(c_set) >= 6 and intersection / len(c_set) >= 0.70):
+                is_duplicate = True
+                break
+
+        if is_duplicate:
+            rejected_count += 1
+            continue
+
+        c_4grams = _get_ngrams(cw, n=4)
+        if c_4grams:
+            overlap_4 = len(c_4grams & existing_4grams) / len(c_4grams)
+            if overlap_4 >= 0.50:
+                rejected_count += 1
+                continue
+        elif len(cw) >= 3:
+            c_3grams = _get_ngrams(cw, n=3)
+            if c_3grams:
+                overlap_3 = len(c_3grams & existing_3grams) / len(c_3grams)
+                if overlap_3 >= 0.65:
+                    rejected_count += 1
+                    continue
+
+        accepted_sents.append(cs)
+
+    if not accepted_sents:
+        return ''
+
+    total_sents = len(cont_sents)
+    if (rejected_count / total_sents) > max_overlap_ratio:
+        return ''
+
+    accepted_text = ' '.join(accepted_sents).strip()
+    accepted_words = accepted_text.split()
+    if len(accepted_words) < min_words:
+        return ''
+
+    return accepted_text
+
+
 def expand_narration(project, seconds_missing):
     """Extend the main content; never time-stretch narration to meet requested minutes."""
     language = project['language']
-    extra_words = max(70, int(seconds_missing * (2.3 if language == 'hi' else 2.55)))
-    prompt = (f'Continue this explanatory narration naturally in {"Hindi (Devanagari)" if language == "hi" else "English"}. '
-              f'Write approximately {extra_words} ADDITIONAL spoken words with useful related information, not repetition. '
-              'Do not add a greeting, channel call-to-action, or sign-off; those are added separately. '
-              'Return JSON with one key: "continuation". Narration so far:\n' + project.get('content_narration', project['narration'])[-7500:])
+    extra_words = min(220, max(50, int(seconds_missing * (2.3 if language == 'hi' else 2.55))))
+    prompt = (
+        f'Continue this explanatory narration naturally in {"Hindi (Devanagari)" if language == "hi" else "English"}. '
+        f'Write approximately {extra_words} ADDITIONAL spoken words with completely fresh, useful related information. '
+        'CRITICAL: Provide NEW facts, practical advice, or real-world examples that have NOT been mentioned before. '
+        'Do NOT repeat, rephrase, or re-summarize any previous points, examples, or conclusions. '
+        'Do NOT add a greeting, channel call-to-action, or sign-off; those are added separately. '
+        'Return JSON with one key: "continuation". Narration so far:\n' + project.get('content_narration', project['narration'])[-7500:]
+    )
     result = gemini_json(prompt)
     addition = str(result.get('continuation', '')).strip()
-    if len(addition) < 70:
-        raise RuntimeError('Gemini returned an empty/short continuation')
-    return addition
-
-
-def sentences(text):
-    # Hindi danda and sentence-final English punctuation; do not split on abbreviations perfectly.
-    chunks=re.split(r'(?<=[.!?।！？])\s+|(?<=।)(?=[^\s])',re.sub(r'\s+',' ',text.strip()))
-    return [s.strip() for s in chunks if s.strip()]
+    if not addition or len(addition) < 40:
+        return ''
+    existing_content = project.get('content_narration', project.get('narration', ''))
+    return filter_continuation_duplicates(existing_content, addition)
 
 
 def narration_groups(narration, language, tts_provider='edge', is_shorts=False):
@@ -2018,19 +2127,23 @@ def main():
     content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
     bookend_length = sum(scene['duration'] for scene in scenes if scene.get('kind') != 'content')
     content_target = max(0, 60 * args.minutes - bookend_length)
+    effective_tolerance = max(args.duration_tolerance, 0.14) if args.minutes >= 3.0 else args.duration_tolerance
     if is_shorts and (content_length + bookend_length) >= 42.0:
         # YouTube Shorts duration is strictly capped under 60 seconds (target 48-54s)
         pass
-    elif args.idea and project.get('content_narration') and content_length < content_target*(1-args.duration_tolerance):
+    elif args.idea and project.get('content_narration') and content_length < content_target * (1 - effective_tolerance):
         # At most two continuations, avoiding endless retries and preserving old audio.
         for attempt in range(2):
-            deficit=content_target-content_length
+            deficit = content_target - content_length
             log(f'Script shorter than target by {deficit:.1f}s; requesting meaningful continuation {attempt+1}/2')
-            extra=expand_narration(project,deficit)
+            extra = expand_narration(project, deficit)
+            if not extra or not extra.strip():
+                log('No meaningful non-repetitive continuation found; keeping complete polished narration.')
+                break
             if effective_image_provider == 'pexels':
-                added=plan_scenes(extra,project['language'],project['theme'],args.tts,image_provider='pexels')
+                added = plan_scenes(extra, project['language'], project['theme'], args.tts, image_provider='pexels')
             else:
-                added=plan_scenes(extra,project['language'],project['theme'],args.tts,image_provider=effective_image_provider,is_shorts=is_shorts)
+                added = plan_scenes(extra, project['language'], project['theme'], args.tts, image_provider=effective_image_provider, is_shorts=is_shorts)
             for scene in added:
                 scene['kind'] = 'content'
             scenes[-1:-1] = added
@@ -2040,25 +2153,26 @@ def main():
                 project['intro_narration'], project['content_narration'], project['outro_narration'],
             ))
             project['avatar_plan'] = build_avatar_plan(scenes)
-            write_json_atomic(meta,project)
-            (args.output/'script.txt').write_text(project['content_narration'],encoding='utf-8')
-            (args.output/'video_script.txt').write_text(project['video_narration'],encoding='utf-8')
+            write_json_atomic(meta, project)
+            (args.output / 'script.txt').write_text(project['content_narration'], encoding='utf-8')
+            (args.output / 'video_script.txt').write_text(project['video_narration'], encoding='utf-8')
             if effective_image_provider == 'pexels':
-                gather_images(scenes,project['theme'],args.output/'images',image_provider='pexels')
+                gather_images(scenes, project['theme'], args.output / 'images', image_provider='pexels')
             else:
-                gather_images(scenes,project['theme'],args.output/'images',image_provider=effective_image_provider,width=width,height=height)
-            narrate_args = [scenes, args.output/'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
+                gather_images(scenes, project['theme'], args.output / 'images', image_provider=effective_image_provider, width=width, height=height)
+            narrate_args = [scenes, args.output / 'voice', project['language'], args.tts, args.indic_url, args.indic_voice]
             if args.tts == 'voicestudio':
                 narrate_args.extend([getattr(args, 'voicestudio_url', None), getattr(args, 'voice_sample', None), getattr(args, 'voicestudio_speed', None)])
             voice = narrate(*narrate_args)
-            length=make_srt(scenes,args.output/'subtitles.srt')
+            length = make_srt(scenes, args.output / 'subtitles.srt')
             content_length = sum(scene['duration'] for scene in scenes if scene.get('kind') == 'content')
             project['avatar_plan'] = build_avatar_plan(scenes)
-            write_json_atomic(meta,project)
+            write_json_atomic(meta, project)
             if is_shorts and (content_length + bookend_length) >= 50.0:
                 break
-            if content_length >= content_target*(1-args.duration_tolerance): break
-        if abs(content_length-content_target)>content_target*args.duration_tolerance:
+            if content_length >= content_target * (1 - effective_tolerance):
+                break
+        if abs(content_length - content_target) > content_target * effective_tolerance:
             log(f'WARNING: Main content is {content_length:.1f}s versus {content_target:.1f}s target; no artificial slowdown applied.')
     log(f'Narration duration: {length:.1f}s; scenes: {len(scenes)}')
     music=None
