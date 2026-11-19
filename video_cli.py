@@ -49,6 +49,7 @@ AVATAR_PLAN_VERSION = 6
 AVATAR_DIR = Path(__file__).resolve().parent / 'storage/Expression_Stickman'
 AVATAR_MANIFEST_PATH = AVATAR_DIR / 'manifest.json'
 OUTRO_CTA_IMAGE = Path(__file__).resolve().parent / 'storage/Outro_image/Like_share_comment_subscribe_combined.png'
+FONTS_DIR = Path(__file__).resolve().parent / 'storage/fonts'
 AVATAR_DISPLAY_HEIGHT_RATIO = 0.36
 AVATAR_BOOKEND_HEIGHT_RATIO = 0.52
 AVATAR_SIDE_MARGIN = 32
@@ -1073,6 +1074,83 @@ def make_srt(scenes, output):
     return curr
 
 
+def format_ass_timestamp(seconds):
+    hrs = int(seconds // 3600)
+    mins = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    return f"{hrs:d}:{mins:02d}:{secs:05.2f}"
+
+
+def generate_kinetic_ass(scenes, output_path, width=1080, height=1920, language='en'):
+    """Generates an Advanced SubStation Alpha (.ass) file with kinetic pop-in captions.
+
+    Captions are placed in the mobile Shorts safe zone (58% vertical height),
+    displaying one word at a time with elastic scale pop-in (1.18x -> 1.0x over 100ms),
+    high-contrast dark outline, and keyword gold highlighting. Intro and outro scenes are skipped.
+    Uses Poppins font for Devanagari (Hindi) and Fredoka for Latin (English).
+    """
+    pos_x = width // 2
+    pos_y = int(height * 0.58)
+    font_size = max(42, int(height * 0.040))
+    font_name = 'Poppins' if language in ('hi', 'hin', 'hindi', 'hi-in') else 'Fredoka'
+
+    header = f"""[Script Info]
+Title: StoryClip Kinetic Captions
+ScriptType: v4.00+
+PlayResX: {width}
+PlayResY: {height}
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Kinetic,{font_name},{font_size},&H00FFFFFF,&H000000FF,&H0020141D,&H59000000,1,0,0,0,100,100,0,0,1,8,4,5,40,40,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    events = []
+    for sc in scenes:
+        if sc.get('kind') != 'content':
+            continue
+        sc_start = float(sc.get('start', 0.0))
+        sc_dur = float(sc.get('duration', 0.0))
+        raw_words = [w.strip() for w in sc.get('text', '').split() if w.strip()]
+        if not raw_words or sc_dur <= 0:
+            continue
+
+        total_chars = sum(len(w) for w in raw_words)
+        curr_t = sc_start
+        for idx, w in enumerate(raw_words):
+            is_star = w.startswith('*') or w.endswith('*') or any(c.isdigit() for c in w)
+            clean_word = w.replace('*', '').strip()
+            if not clean_word:
+                continue
+
+            char_ratio = len(clean_word) / max(1, total_chars)
+            word_dur = max(0.18, sc_dur * char_ratio)
+            if idx == len(raw_words) - 1:
+                word_end = sc_start + sc_dur
+            else:
+                word_end = min(sc_start + sc_dur, curr_t + word_dur)
+
+            display_word = clean_word.upper()
+            if is_star:
+                text_line = f"{{\\c&H3AD2FF&}}{display_word}{{\\c&HFFFFFF&}}"
+            else:
+                text_line = display_word
+
+            anim = f"{{\\an5\\pos({pos_x},{pos_y})\\fscx118\\fscy118\\t(0,100,\\fscx100\\fscy100)}}"
+            t_start_str = format_ass_timestamp(curr_t)
+            t_end_str = format_ass_timestamp(word_end)
+            events.append(f"Dialogue: 0,{t_start_str},{t_end_str},Kinetic,,0,0,0,,{anim}{text_line}")
+            curr_t = word_end
+
+    output_path = Path(output_path)
+    output_path.write_text(header + '\n'.join(events) + '\n', encoding='utf-8')
+    return output_path
+
+
 def jamendo_candidates(mood,limit=12):
     r=SESSION.get('https://api.jamendo.com/v3.0/tracks/',params={
         'client_id':os.environ['JAMENDO_CLIENT_ID'],'format':'json','limit':limit,
@@ -1690,7 +1768,7 @@ def join_scene_segments(paths, signatures, counts, output_dir, fps, width, heigh
     return visual
 
 
-def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME, final_output=None):
+def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720, style='auto', zoom=True, bgm_volume=DEFAULT_BGM_VOLUME, final_output=None, burn_captions=False, language='en'):
     """Encode finished scene segments, join by stream copy, then mux audio."""
     files, signatures, counts, _, avatar_plan = render_scene_segments(
         scenes, output_dir, fps, width, height, style, zoom,
@@ -1700,6 +1778,13 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
     out = final_output if final_output is not None else output_dir / 'final.mp4'
     total = sum(float(scene['duration']) for scene in scenes)
     log('Muxing narration and optional music into final video')
+    sub_filter_str = None
+    if burn_captions:
+        ass_path = generate_kinetic_ass(scenes, output_dir / 'captions.ass', width=width, height=height, language=language)
+        if ass_path.is_file() and ass_path.stat().st_size > 0:
+            escaped_ass = str(ass_path.resolve()).replace('\\', '/').replace(':', '\\:')
+            font_dir_arg = f":fontsdir='{str(FONTS_DIR.resolve()).replace('\\', '/').replace(':', '\\:')}'" if FONTS_DIR.is_dir() else ""
+            sub_filter_str = f"ass='{escaped_ass}':shaping=complex{font_dir_arg}"
     if music:
         first = music[0]['path']
         track_duration = audio_duration(first)
@@ -1724,13 +1809,27 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
             f'afade=t=out:st={fade_out_start:.3f}:d={fade_out:.3f}[bg]'
         )
         filters.append('[1:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]')
-        args = ['ffmpeg','-y','-loglevel','error',*inputs,'-filter_complex',';'.join(filters),
-                '-map','0:v:0','-map','[a]','-c:v','copy','-c:a','aac','-b:a','192k',
-                '-t',f'{total:.3f}','-movflags','+faststart',out]
+        if sub_filter_str:
+            filters.append(f'[0:v]{sub_filter_str}[v]')
+            args = ['ffmpeg', '-y', '-loglevel', 'error', *inputs, '-filter_complex', ';'.join(filters),
+                    '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-crf', '18', '-preset', 'fast',
+                    '-c:a', 'aac', '-b:a', '192k',
+                    '-t', f'{total:.3f}', '-movflags', '+faststart', out]
+        else:
+            args = ['ffmpeg', '-y', '-loglevel', 'error', *inputs, '-filter_complex', ';'.join(filters),
+                    '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+                    '-t', f'{total:.3f}', '-movflags', '+faststart', out]
     else:
-        args = ['ffmpeg','-y','-loglevel','error','-i',visual,'-i',narration,
-                '-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','aac','-b:a','192k',
-                '-t',f'{total:.3f}','-movflags','+faststart',out]
+        if sub_filter_str:
+            args = ['ffmpeg', '-y', '-loglevel', 'error', '-i', visual, '-i', narration,
+                    '-vf', sub_filter_str, '-map', '0:v:0', '-map', '1:a:0',
+                    '-c:v', 'libx264', '-crf', '18', '-preset', 'fast',
+                    '-c:a', 'aac', '-b:a', '192k',
+                    '-t', f'{total:.3f}', '-movflags', '+faststart', out]
+        else:
+            args = ['ffmpeg', '-y', '-loglevel', 'error', '-i', visual, '-i', narration,
+                    '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+                    '-t', f'{total:.3f}', '-movflags', '+faststart', out]
     run(args)
     return out
 
@@ -1748,6 +1847,7 @@ def requested_render_settings(args):
         'skip_music': args.skip_music,
         'music_rights_confirmed': args.music_rights_confirmed,
         'duration_tolerance': args.duration_tolerance,
+        'captions': getattr(args, 'captions', None),
     }
 
 
@@ -1892,6 +1992,8 @@ def build_parser():
                    help='Visual imagery provider: pexels-video (motion video clips from Pexels, default), pexels (stock photos), or cloudflare-flux/flux (minimalist whiteboard stickman doodles via Cloudflare Workers AI)')
     p.add_argument('--format', choices=['landscape', 'shorts', 'vertical'], default='landscape',
                    help='Video format: landscape (16:9) or shorts/vertical (9:16 1080x1920)')
+    p.add_argument('--captions', action=argparse.BooleanOptionalAction, default=None,
+                   help='Burn kinetic animated captions into the video (defaults to True for --format shorts)')
     return p
 
 
@@ -1908,6 +2010,8 @@ def validate_cli_args(p, args):
             args.minutes = 0.85
         if not args.music_mood:
             args.music_mood = 'soothing'
+    if getattr(args, 'captions', None) is None:
+        args.captions = (getattr(args, 'format', 'landscape') == 'shorts')
     if getattr(args, 'image_provider', 'pexels') in ('flux', 'cloudflare'):
         args.image_provider = 'cloudflare-flux'
     if args.tts in ('puck', 'gemini-tts'):
@@ -2205,7 +2309,7 @@ def main():
         raise RuntimeError('Refusing to mux into a symlinked final.part.mp4 in the output directory')
     movie=render(scenes,voice,music,args.output,args.fps,width=width,height=height,
                  style=args.style,zoom=not args.no_zoom,bgm_volume=args.bgm_volume,
-                 final_output=temporary_movie)
+                 final_output=temporary_movie,burn_captions=args.captions,language=args.language)
     subtitle = args.output / 'subtitles.srt'
     if not subtitle.is_file() or subtitle.stat().st_size == 0:
         raise RuntimeError('Subtitles are missing or empty; work files were retained for retry')
