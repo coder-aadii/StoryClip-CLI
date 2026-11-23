@@ -57,6 +57,30 @@ class KineticCaptionsTests(unittest.TestCase):
             video_cli.generate_kinetic_ass(scenes, ass_hi, language='hi')
             self.assertIn("Style: Kinetic,Poppins,", ass_hi.read_text(encoding='utf-8'))
 
+    def test_generate_kinetic_ass_uses_aligned_words_when_present(self):
+        scenes = [
+            {
+                'kind': 'content',
+                'start': 2.0,
+                'duration': 3.0,
+                'voice_start': 0.0,
+                'text': 'Fast speech pause.',
+                'aligned_words': [
+                    {'word': 'Fast', 'start': 0.2, 'end': 0.6},
+                    {'word': 'speech', 'start': 0.7, 'end': 1.1},
+                    {'word': 'pause.', 'start': 2.0, 'end': 2.5},
+                ]
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ass_path = Path(tmpdir) / 'captions.ass'
+            video_cli.generate_kinetic_ass(scenes, ass_path, width=1080, height=1920)
+            content = ass_path.read_text(encoding='utf-8')
+            # 'Fast' should appear around 2.2s (start=2.0 + rel=0.2)
+            self.assertIn("0:00:02.20,0:00:02.60,Kinetic,,0,0,0,,{\\an5\\pos(540,1113)", content)
+            # 'pause.' should start around 4.0s (start=2.0 + rel=2.0)
+            self.assertIn("0:00:04.00,", content)
+
     def test_cli_captions_defaults(self):
         parser = video_cli.build_parser()
 

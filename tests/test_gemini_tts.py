@@ -77,6 +77,34 @@ class GeminiTtsRetryTests(unittest.TestCase):
         self.assertEqual(generate.call_count, 3)
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [22.0, 42.0])
 
+    def test_sanitize_text_for_tts_hindi(self):
+        # Removes quotes, replaces ! and ? with poorna-viram, normalizes दोस्तों -> दोस्तो, strips hyphens
+        raw = "तो क्या हाल है दोस्तों! 'कबड्डी' खेलें? विटामिन-डी मिलता है।"
+        sanitized = tts_service.sanitize_text_for_tts(raw, 'hi')
+        self.assertEqual(
+            sanitized,
+            "तो क्या हाल है दोस्तो। कबड्डी खेलें। विटामिन डी मिलता है।"
+        )
+
+    def test_gemini_speak_uses_sanitized_text_and_director_notes(self):
+        generate = Mock(return_value=self.response_with_pcm())
+        client = SimpleNamespace(models=SimpleNamespace(generate_content=generate))
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('google.genai.Client', return_value=client):
+            destination = Path(directory) / 'speech.wav'
+            raw = "तो क्या हाल है दोस्तों! 'कबड्डी' खेलें।"
+            tts_service.gemini_speak(raw, destination, 'hi')
+
+            self.assertEqual(generate.call_count, 1)
+            call_kwargs = generate.call_args.kwargs
+            contents = call_kwargs['contents']
+            # Prompt must contain sanitized text
+            self.assertIn("Transcript:\nतो क्या हाल है दोस्तो। कबड्डी खेलें।", contents)
+            # Prompt must contain completeness and pronunciation director notes
+            self.assertIn("Read every single word in the transcript clearly without skipping", contents)
+            self.assertIn("pronounce 'दोस्तो' as 'dosto'", contents)
+
 
 if __name__ == '__main__':
     unittest.main()

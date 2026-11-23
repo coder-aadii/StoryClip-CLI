@@ -39,6 +39,20 @@ class AlignmentTests(unittest.TestCase):
         boundaries = alignment.scene_boundaries(words_minor_overlap, scenes, 4)
         self.assertEqual(boundaries, [0.0, 0.97, 4])
 
+    def test_hindi_nasalization_variation_accepted_in_alignment(self):
+        # Transcribed words have 'दोस्तो' without anusvara while script has 'दोस्तों'
+        scenes = [{'text': 'नमस्ते दोस्तों।'}, {'text': 'खेल शुरू करते हैं।'}]
+        words = [
+            dict(word='नमस्ते', start=0.2, end=0.8),
+            dict(word='दोस्तो', start=0.9, end=1.5),
+            dict(word='खेल', start=1.8, end=2.2),
+            dict(word='शुरू', start=2.2, end=2.6),
+            dict(word='करते', start=2.6, end=3.0),
+            dict(word='है', start=3.0, end=3.3),
+        ]
+        boundaries = alignment.scene_boundaries(words, scenes, 3.5)
+        self.assertEqual(boundaries, [0.0, 1.8, 3.5])
+
     def test_alignment_cache_reuse_and_audio_invalidation(self):
         words = [SimpleNamespace(word='Hello.', start=0.1, end=1),
                  SimpleNamespace(word='World.', start=2, end=3)]
@@ -75,6 +89,44 @@ class BatchedNarrationTests(unittest.TestCase):
         ] + [{'text': 'Bye.', 'kind': 'outro'}]
         groups = tts.speech_chunks(scenes, 'hi')
         self.assertEqual(groups, [[0], list(range(1, 7)), list(range(7, 13)), [13]])
+
+    def test_speech_chunks_respects_max_seconds_override(self):
+        scenes = [{'text': 'Hello.', 'kind': 'intro'}] + [
+            {'text': ' '.join(['word'] * 10), 'kind': 'content'} for _ in range(8)
+        ] + [{'text': 'Bye.', 'kind': 'outro'}]
+        # With max_seconds=15, 15 * 1.75 = 26.25 words -> chunks of ~2 scenes (20 words) each
+        groups = tts.speech_chunks(scenes, 'hi', max_seconds=15, hard_limit_seconds=25)
+        self.assertEqual(groups[0], [0])
+        self.assertEqual(groups[-1], [9])
+        self.assertTrue(all(len(g) <= 3 for g in groups[1:-1]))
+
+    def test_align_scenes_attaches_aligned_words_to_scenes(self):
+        scenes = [{'text': 'Hello.'}, {'text': 'World.'}]
+        words = [
+            SimpleNamespace(word='Hello.', start=0.1, end=1.0),
+            SimpleNamespace(word='World.', start=2.0, end=3.0),
+        ]
+        model = Mock()
+        model.align.return_value = SimpleNamespace(segments=[SimpleNamespace(words=words)])
+        backend = Mock()
+        backend.load_model.return_value = model
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(alignment, 'require_alignment', return_value=backend), \
+                patch.object(alignment, '_MODELS', {}), \
+                patch.dict(sys.modules, {'torch': SimpleNamespace(
+                    get_num_threads=lambda: 4, set_num_threads=lambda count: None)}), \
+                patch('importlib.metadata.version', return_value='test'), \
+                patch.dict('os.environ', {'STORYCLIP_ALIGN_MODEL': 'small'}):
+            audio = Path(directory) / 'voice.wav'
+            with wave.open(str(audio), 'wb') as wav:
+                wav.setparams((1, 2, 24000, 0, 'NONE', 'not compressed'))
+                wav.writeframes(b'\x01\x00' * (4 * 24000))
+            boundaries = alignment.align_scenes(audio, scenes, 'en')
+            self.assertEqual(boundaries, [0, 2.0, 4])
+            self.assertIn('aligned_words', scenes[0])
+            self.assertIn('aligned_words', scenes[1])
+            self.assertEqual(scenes[0]['aligned_words'][0]['word'], 'Hello.')
+            self.assertEqual(scenes[1]['aligned_words'][0]['word'], 'World.')
 
     def test_multiple_visuals_share_continuous_audio_and_alignment_retry_reuses_tts(self):
         scenes = [{'text': 'Hello.', 'kind': 'content'}, {'text': 'World.', 'kind': 'content'}]

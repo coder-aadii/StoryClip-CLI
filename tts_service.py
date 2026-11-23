@@ -97,12 +97,36 @@ def gemini_rate_limit_delay(error, fallback_seconds):
     return min(300.0, max(1.0, server_delay + GEMINI_TTS_RETRY_BUFFER_SECONDS))
 
 
+def sanitize_text_for_tts(text, language):
+    """Sanitize and normalize text for robust TTS pronunciation without dropped words."""
+    if not text:
+        return text
+    clean = text
+    # Strip quotes (standard, curly, backticks) that confuse TTS pacing
+    clean = re.sub(r"['\"`‘’“”]", "", clean)
+    if language in ('hi', 'hin', 'hindi', 'hi-in'):
+        # Normalize vocative plural 'दोस्तों' -> 'दोस्तो' to prevent 'dosko' hallucination
+        clean = re.sub(r'दोस्तों(?=[ ,.!?;:।\n]|$)', 'दोस्तो', clean)
+        # Convert standalone exclamation marks to poorna-viram for natural pausing
+        clean = re.sub(r'\s*!\s*', '। ', clean)
+        # Convert question marks in Hindi to poorna-viram for steady sentence closure without dropped transition words
+        clean = re.sub(r'\s*\?\s*', '। ', clean)
+        # Remove hyphens between words (e.g., 'विटामिन-डी' -> 'विटामिन डी')
+        clean = re.sub(r'(\w)-(\w)', r'\1 \2', clean)
+        # Ensure poorna-viram has a trailing space if followed by a non-whitespace character
+        clean = re.sub(r'।(?=\S)', '। ', clean)
+        clean = re.sub(r'[ \t]+', ' ', clean).strip()
+    return clean
+
+
 def gemini_speak(text, dest, language, mood='neutral'):
     # Gemini generateContent single-speaker API. SDK response may be WAV or raw PCM.
     from google import genai
     from google.genai import types
     client=genai.Client(api_key=os.environ['GEMINI_API_KEY'])
     delivery = {'horror': 'Narrate with restrained dread, uneasy pauses and rising tension. Sound like a human telling a frightening story, not an announcer.', 'joy': 'Narrate warmly, smiling, animated and full of genuine delight.', 'neutral': 'Narrate naturally with authentic storytelling emotion and varied intonation.'}.get(mood,'Narrate naturally.')
+
+    sanitized_text = sanitize_text_for_tts(text, language)
 
     if language == 'hi':
         profile = (
@@ -113,7 +137,9 @@ def gemini_speak(text, dest, language, mood='neutral'):
         notes = (
             "Director's Notes: Apply the following performance directions without speaking them. "
             "Speak ONLY the exact text in the Transcript section. Do not read any instructions, profile labels, or section titles aloud.\n"
-            f"- Delivery: {delivery} Natural, confident spoken Hindi/Hinglish cadence; punchy and engaging."
+            f"- Delivery: {delivery} Natural, confident spoken Hindi/Hinglish cadence; punchy and engaging.\n"
+            "- Completeness: Read every single word in the transcript clearly without skipping, dropping, or truncating any phrase or sentence.\n"
+            "- Pronunciation: Pronounce common words naturally (e.g. pronounce 'दोस्तो' as 'dosto', never 'dosko')."
         )
     else:
         profile = (
@@ -130,7 +156,7 @@ def gemini_speak(text, dest, language, mood='neutral'):
         f"{profile}\n\n"
         f"{scene_desc}\n\n"
         f"{notes}\n\n"
-        f"Transcript:\n{text}"
+        f"Transcript:\n{sanitized_text}"
     )
 
     request = {
@@ -445,14 +471,16 @@ def narrate_units(scenes, folder, language, provider, indic_url=None, indic_voic
     return output
 
 
-def speech_chunks(scenes, language):
+def speech_chunks(scenes, language, max_seconds=None, hard_limit_seconds=None):
     """Batch short visual scenes without crossing intro/outro boundaries."""
     wps = 1.75 if language == 'hi' else 2.25
+    soft_words = (max_seconds if max_seconds is not None else 60) * wps
+    hard_words = (hard_limit_seconds if hard_limit_seconds is not None else 90) * wps
     groups, current, words = [], [], 0
     for index, scene in enumerate(scenes):
         count = len(scene['text'].split())
         bookend = scene.get('kind', 'content') != 'content'
-        if current and (bookend or words >= 60 * wps or words + count > 90 * wps):
+        if current and (bookend or words >= soft_words or words + count > hard_words):
             groups.append(current)
             current, words = [], 0
         if bookend:
@@ -473,7 +501,9 @@ def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None
 
     from speech_alignment import align_scenes, require_alignment
     require_alignment()
-    groups = speech_chunks(scenes, language)
+    # For Gemini TTS, constrain batch chunks to ~20s soft, ~35s hard limit (approx 25-45 words)
+    # to prevent autoregressive attention drift, dropped transition phrases, and truncation.
+    groups = speech_chunks(scenes, language, max_seconds=20, hard_limit_seconds=35)
     chunks = []
     for indices in groups:
         moods = {scenes[i].get('mood', 'neutral') for i in indices}

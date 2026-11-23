@@ -252,12 +252,12 @@ def script_title_from_llm(content, language):
 
 def intro_narration(title, language, is_shorts=False):
     if is_shorts:
-        return 'तो क्या हाल है दोस्तों!' if language == 'hi' else "What's up friends!"
+        return 'तो क्या हाल है दोस्तो!' if language == 'hi' else "What's up friends!"
     display_title = re.sub(r'[_-]+', ' ', str(title or '')).strip()
     if not display_title or (language == 'hi' and re.search(r'[a-zA-Z]', display_title)):
         display_title = 'आज का विशेष विषय' if language == 'hi' else "today's topic"
     if language == 'hi':
-        return f'तो क्या हाल है दोस्तों! आज के वीडियो में हम जानेंगे {display_title} के बारे में। चलिए शुरू करते हैं!'
+        return f'तो क्या हाल है दोस्तो! आज के वीडियो में हम जानेंगे {display_title} के बारे में। चलिए शुरू करते हैं!'
     return f"Hello everyone! In today's video, we're exploring {display_title}. Let's begin."
 
 
@@ -1119,32 +1119,63 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if not raw_words or sc_dur <= 0:
             continue
 
-        total_chars = sum(len(w) for w in raw_words)
-        curr_t = sc_start
-        for idx, w in enumerate(raw_words):
-            is_star = w.startswith('*') or w.endswith('*') or any(c.isdigit() for c in w)
-            clean_word = w.replace('*', '').strip()
-            if not clean_word:
-                continue
+        aligned = sc.get('aligned_words')
+        if aligned:
+            v_start = float(sc.get('voice_start', 0.0))
+            for aw in aligned:
+                w = aw['word'].strip()
+                if not w:
+                    continue
+                is_star = w.startswith('*') or w.endswith('*') or any(c.isdigit() for c in w)
+                clean_word = w.replace('*', '').strip()
+                if not clean_word:
+                    continue
 
-            char_ratio = len(clean_word) / max(1, total_chars)
-            word_dur = max(0.18, sc_dur * char_ratio)
-            if idx == len(raw_words) - 1:
-                word_end = sc_start + sc_dur
-            else:
-                word_end = min(sc_start + sc_dur, curr_t + word_dur)
+                rel_start = max(0.0, float(aw['start']) - v_start)
+                rel_end = max(rel_start + 0.18, float(aw['end']) - v_start)
 
-            display_word = clean_word.upper()
-            if is_star:
-                text_line = f"{{\\c&H3AD2FF&}}{display_word}{{\\c&HFFFFFF&}}"
-            else:
-                text_line = display_word
+                word_start = sc_start + rel_start
+                word_end = min(sc_start + sc_dur, sc_start + rel_end)
+                if word_end <= word_start:
+                    word_end = min(sc_start + sc_dur, word_start + 0.18)
 
-            anim = f"{{\\an5\\pos({pos_x},{pos_y})\\fscx118\\fscy118\\t(0,100,\\fscx100\\fscy100)}}"
-            t_start_str = format_ass_timestamp(curr_t)
-            t_end_str = format_ass_timestamp(word_end)
-            events.append(f"Dialogue: 0,{t_start_str},{t_end_str},Kinetic,,0,0,0,,{anim}{text_line}")
-            curr_t = word_end
+                display_word = clean_word.upper()
+                if is_star:
+                    text_line = f"{{\\c&H3AD2FF&}}{display_word}{{\\c&HFFFFFF&}}"
+                else:
+                    text_line = display_word
+
+                anim = f"{{\\an5\\pos({pos_x},{pos_y})\\fscx118\\fscy118\\t(0,100,\\fscx100\\fscy100)}}"
+                t_start_str = format_ass_timestamp(word_start)
+                t_end_str = format_ass_timestamp(word_end)
+                events.append(f"Dialogue: 0,{t_start_str},{t_end_str},Kinetic,,0,0,0,,{anim}{text_line}")
+        else:
+            total_chars = sum(len(w) for w in raw_words)
+            curr_t = sc_start
+            for idx, w in enumerate(raw_words):
+                is_star = w.startswith('*') or w.endswith('*') or any(c.isdigit() for c in w)
+                clean_word = w.replace('*', '').strip()
+                if not clean_word:
+                    continue
+
+                char_ratio = len(clean_word) / max(1, total_chars)
+                word_dur = max(0.18, sc_dur * char_ratio)
+                if idx == len(raw_words) - 1:
+                    word_end = sc_start + sc_dur
+                else:
+                    word_end = min(sc_start + sc_dur, curr_t + word_dur)
+
+                display_word = clean_word.upper()
+                if is_star:
+                    text_line = f"{{\\c&H3AD2FF&}}{display_word}{{\\c&HFFFFFF&}}"
+                else:
+                    text_line = display_word
+
+                anim = f"{{\\an5\\pos({pos_x},{pos_y})\\fscx118\\fscy118\\t(0,100,\\fscx100\\fscy100)}}"
+                t_start_str = format_ass_timestamp(curr_t)
+                t_end_str = format_ass_timestamp(word_end)
+                events.append(f"Dialogue: 0,{t_start_str},{t_end_str},Kinetic,,0,0,0,,{anim}{text_line}")
+                curr_t = word_end
 
     output_path = Path(output_path)
     output_path.write_text(header + '\n'.join(events) + '\n', encoding='utf-8')
@@ -1783,7 +1814,8 @@ def render(scenes, narration, music, output_dir, fps=24, width=1280, height=720,
         ass_path = generate_kinetic_ass(scenes, output_dir / 'captions.ass', width=width, height=height, language=language)
         if ass_path.is_file() and ass_path.stat().st_size > 0:
             escaped_ass = str(ass_path.resolve()).replace('\\', '/').replace(':', '\\:')
-            font_dir_arg = f":fontsdir='{str(FONTS_DIR.resolve()).replace('\\', '/').replace(':', '\\:')}'" if FONTS_DIR.is_dir() else ""
+            font_dir_str = str(FONTS_DIR.resolve()).replace('\\', '/').replace(':', '\\:')
+            font_dir_arg = f":fontsdir='{font_dir_str}'" if FONTS_DIR.is_dir() else ""
             sub_filter_str = f"ass='{escaped_ass}':shaping=complex{font_dir_arg}"
     if music:
         first = music[0]['path']

@@ -28,9 +28,10 @@ def alignment_settings():
 
 
 def normalized(text):
-    # Preserve Devanagari vowel marks; ignore whitespace and punctuation only.
-    return ''.join(c.lower() for c in unicodedata.normalize('NFC', text)
-                   if unicodedata.category(c)[0] in ('L', 'M', 'N'))
+    # Preserve Devanagari vowel marks; ignore whitespace, punctuation, and nasalization marks (anusvara/chandrabindu).
+    norm = unicodedata.normalize('NFC', text)
+    return ''.join(c.lower() for c in norm
+                   if unicodedata.category(c)[0] in ('L', 'M', 'N') and c not in ('\u0901', '\u0902'))
 
 
 def scene_boundaries(words, scenes, duration):
@@ -67,6 +68,17 @@ def scene_boundaries(words, scenes, duration):
     return boundaries
 
 
+def attach_scene_words(scenes, words, boundaries):
+    for index, scene in enumerate(scenes):
+        s_start = boundaries[index]
+        s_end = boundaries[index + 1]
+        scene['aligned_words'] = [
+            {'word': w['word'], 'start': float(w['start']), 'end': float(w['end'])}
+            for w in words
+            if float(w['start']) >= s_start - 0.05 and float(w['start']) < s_end
+        ]
+
+
 def align_scenes(audio, scenes, language):
     from tts_service import audio_duration, cache_key, write_json_atomic
     import json
@@ -83,7 +95,9 @@ def align_scenes(audio, scenes, language):
     try:
         saved = json.loads(cache.read_text(encoding='utf-8'))
         if saved.get('identity') == identity:
-            return scene_boundaries(saved['words'], scenes, duration)
+            boundaries = scene_boundaries(saved['words'], scenes, duration)
+            attach_scene_words(scenes, saved['words'], boundaries)
+            return boundaries
     except (OSError, ValueError, KeyError, TypeError):
         pass
     log(f'Aligning {len(scenes)} visual scenes to Gemini audio locally')
@@ -105,6 +119,7 @@ def align_scenes(audio, scenes, language):
         words = [{'word': word.word, 'start': word.start, 'end': word.end}
                  for segment in result.segments for word in segment.words]
         boundaries = scene_boundaries(words, scenes, duration)
+        attach_scene_words(scenes, words, boundaries)
         write_json_atomic(cache, {'identity': identity, 'words': words})
         return boundaries
     except Exception as ex:
