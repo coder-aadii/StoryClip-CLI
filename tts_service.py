@@ -139,7 +139,7 @@ def gemini_speak(text, dest, language, mood='neutral'):
             "Speak ONLY the exact text in the Transcript section. Do not read any instructions, profile labels, or section titles aloud.\n"
             f"- Delivery: {delivery} Natural, confident spoken Hindi/Hinglish cadence; punchy and engaging.\n"
             "- Completeness: Read every single word in the transcript clearly without skipping, dropping, or truncating any phrase or sentence.\n"
-            "- Pronunciation: Pronounce common words naturally (e.g. pronounce 'दोस्तो' as 'dosto', never 'dosko')."
+            "- Pronunciation: Speak naturally with authentic, clear Hindi pronunciation for every word (pronounce 'दोस्तो' as 'dosto')."
         )
     else:
         profile = (
@@ -291,7 +291,7 @@ def tts_cache_identity(text, language, provider, mood, indic_url=None, indic_voi
     gemini = {
         'model': os.getenv('GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts'),
         'voice': GEMINI_TTS_VOICE,
-        'delivery_prompt_version': 2,
+        'delivery_prompt_version': 3,
     }
     if provider == 'indic-parler':
         identity['settings'] = {'base_url': indic_url.rstrip('/'), 'voice': indic_voice, 'language': 'hi-IN'}
@@ -494,21 +494,33 @@ def speech_chunks(scenes, language, max_seconds=None, hard_limit_seconds=None):
 
 
 def narrate(scenes, folder, language, provider, indic_url=None, indic_voice=None,
-            voicestudio_url=None, voice_sample=None, voicestudio_speed=None):
+            voicestudio_url=None, voice_sample=None, voicestudio_speed=None, is_shorts=None):
     if provider != 'gemini':
         return narrate_units(scenes, folder, language, provider, indic_url, indic_voice,
                              voicestudio_url, voice_sample, voicestudio_speed)
 
     from speech_alignment import align_scenes, require_alignment
     require_alignment()
-    # For Gemini TTS, constrain batch chunks to ~20s soft, ~35s hard limit (approx 25-45 words)
-    # to prevent autoregressive attention drift, dropped transition phrases, and truncation.
-    groups = speech_chunks(scenes, language, max_seconds=20, hard_limit_seconds=35)
+
+    if is_shorts is None:
+        is_shorts = any(bool(s.get('is_shorts')) for s in scenes)
+
+    if is_shorts:
+        # For Shorts (<=60s), synthesize the entire narration in 1 single Gemini TTS call
+        # with sentence line breaks. This avoids 429/503 rate limits, prevents cold-start
+        # phonetic hallucinations on isolated intro greetings, and allows intro and content to flow naturally.
+        groups = [list(range(len(scenes)))]
+        sep = '\n\n'
+    else:
+        # For long videos, preserve multi-scene batching (~20s soft, ~35s hard limit).
+        groups = speech_chunks(scenes, language, max_seconds=20, hard_limit_seconds=35)
+        sep = ' '
+
     chunks = []
     for indices in groups:
         moods = {scenes[i].get('mood', 'neutral') for i in indices}
         chunks.append({
-            'text': ' '.join(scenes[i]['text'] for i in indices),
+            'text': sep.join(scenes[i]['text'] for i in indices),
             'mood': 'horror' if 'horror' in moods else ('joy' if 'joy' in moods else 'neutral'),
         })
     log(f'Gemini narration: {len(chunks)} speech chunks for {len(scenes)} visual scenes')

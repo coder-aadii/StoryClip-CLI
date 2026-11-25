@@ -151,6 +151,37 @@ class BatchedNarrationTests(unittest.TestCase):
             self.assertEqual(scenes[1]['voice_start'], 1)
             self.assertEqual(len((folder / 'narration_concat.txt').read_text().splitlines()), 1)
 
+    def test_narrate_unifies_single_chunk_for_shorts(self):
+        scenes = [
+            {'text': 'Intro greeting.', 'kind': 'intro', 'is_shorts': True},
+            {'text': 'Main fact one.', 'kind': 'content', 'is_shorts': True},
+            {'text': 'Main fact two.', 'kind': 'content', 'is_shorts': True},
+            {'text': 'Outro subscribe.', 'kind': 'outro', 'is_shorts': True},
+        ]
+        def speak(text, dest, language, mood):
+            with wave.open(str(dest), 'wb') as wav:
+                wav.setparams((1, 2, 24000, 0, 'NONE', 'not compressed'))
+                wav.writeframes(b'\x10\x10' * (4 * 24000))
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(tts, 'gemini_speak', side_effect=speak) as synth, \
+                patch.object(tts, 'run'), \
+                patch.object(alignment, 'require_alignment'), \
+                patch.object(alignment, 'align_scenes', return_value=[0, 1.0, 2.0, 3.0, 4.0]):
+            folder = Path(directory)
+            tts.narrate(scenes, folder, 'hi', 'gemini', is_shorts=True)
+            # Shorts must use exactly 1 Gemini TTS generation call
+            self.assertEqual(synth.call_count, 1)
+            # Scenes must be separated by \n\n
+            self.assertEqual(
+                synth.call_args.args[0],
+                'Intro greeting.\n\nMain fact one.\n\nMain fact two.\n\nOutro subscribe.'
+            )
+            # All scenes must share the same voice audio file
+            self.assertEqual(scenes[0]['voice'], scenes[3]['voice'])
+            self.assertEqual(scenes[0]['duration'], 1.0)
+            self.assertEqual(scenes[1]['voice_start'], 1.0)
+
 
 if __name__ == '__main__':
     unittest.main()
