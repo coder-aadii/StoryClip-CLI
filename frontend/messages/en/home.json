@@ -1,0 +1,538 @@
+{
+  "greeting": {
+    "upLate": "Up late",
+    "goodMorning": "Good morning",
+    "goodAfternoon": "Good afternoon",
+    "goodEvening": "Good evening",
+    "named": "{greeting}, {name}"
+  },
+  "subtitle": "Drop in a long video. Get back captioned, ready-to-post clips.",
+  "errors": {
+    "fonts": "Could not load fonts right now.",
+    "notVideo": "That doesn't look like a video file. Try MP4, MOV, MKV or WebM.",
+    "fontType": "Only .ttf and .otf files are supported for custom fonts.",
+    "uploadFont": "Failed to upload font",
+    "uploadFontRetry": "Failed to upload font. Please try again.",
+    "processVideo": "Failed to process video. Please try again.",
+    "fileTooLarge": "This file is {size}, which is over the {limit} upload limit. Try a shorter export or a smaller file.",
+    "api": "API error: {status}"
+  },
+  "status": {
+    "uploading": "Uploading video…",
+    "checkingLength": "Checking video length…",
+    "starting": "Starting generation…",
+    "working": "Working…",
+    "uploadingFont": "Uploading…"
+  },
+  "drop": "Drop to upload your video",
+  "readyToUpload": "{size} · ready to upload",
+  "removeFile": "Remove file",
+  "youtubeUrl": "YouTube, Twitch, or Kick URL",
+  "urlPlaceholder": "Paste a YouTube, Twitch, or Kick VOD/clip link",
+  "uploadFile": "Upload a video file",
+  "upload": "Upload",
+  "defaultTemplate": "Default",
+  "defaultTemplateDescription": "Word-by-word captions",
+  "captionStyle": "Caption style",
+  "customize": "Customize",
+  "resetTemplate": "Reset to template",
+  "font": "Font",
+  "uploadFont": "Upload font",
+  "customFontsPaid": "Use your own fonts with a paid plan",
+  "searchFonts": "Search fonts",
+  "templateDefault": "Template default",
+  "noFontMatch": "No fonts match your search",
+  "color": "Color",
+  "template": "Template",
+  "captionColor": "Caption color {color}",
+  "customColor": "Custom color",
+  "customCaptionColor": "Custom caption color",
+  "livePreview": "Live preview",
+  "framing": "Framing",
+  "framingOptions": {
+    "vertical": {
+      "label": "Auto 9:16",
+      "hint": "Adapts to subjects and scene context"
+    },
+    "vertical_fit": {
+      "label": "Full frame 9:16",
+      "hint": "Show everything on a vertical canvas"
+    },
+    "vertical_pan": {
+      "label": "Speaker pan",
+      "hint": "Follows whoever is talking"
+    },
+    "vertical_split": {
+      "label": "Split-screen",
+      "hint": "Two speakers stacked"
+    },
+    "original": {
+      "label": "Original",
+      "hint": "Keep the source aspect ratio"
+    }
+  },
+  "captions": "Captions",
+  "noCaptions": "No captions",
+  "broll": "B-roll",
+  "brollHint": "Adds stock footage from Pexels where the speaker names something you can show",
+  "cleanup": "Cleanup",
+  "composerSettings": {
+    "chip": "Settings",
+    "tour": "Take the tour",
+    "limits": "Upload limits and details",
+    "reset": "Reset all settings",
+    "on": "On",
+    "off": "Off"
+  },
+  "cleanupTitle": "Clip cleanup",
+  "cleanupBody": "Tighten dead air and cut filler sounds while rendering.",
+  "cleanupMore": "More options",
+  "shortenPauses": "Shorten long pauses",
+  "shortenPausesHint": "Trim silences longer than this down to a short breath",
+  "pauseThreshold": "Pause threshold (ms)",
+  "removeFillers": "Remove filler words",
+  "removeFillersHint": "“um”, “uh”, “erm” and similar sounds",
+  "extraWords": "Extra words or phrases to cut",
+  "extraWordsPlaceholder": "basically, literally, to be honest",
+  "generate": "Generate clips",
+  "limitNote": "{plan}: videos up to {minutes} minutes each, linked or uploaded. Each video uses its length in minutes, checked before we start.",
+  "uploadLimits": "Uploads up to {size}. Videos above 1080p or 60 fps are scaled down automatically, keeping their shape.",
+  "completionEmails": "Completion emails follow your preference in <settings>Settings</settings>.",
+  "recent": "Recent",
+  "viewLibrary": "View library",
+  "recentEmpty": "Your clips will show up here. Paste a link above to make your first batch.",
+  "previewHook": "Your hook title lands here",
+  "previewCaptions": "This is how your captions look",
+  "captionSize": {
+    "size": "Size",
+    "templateDefault": "Template default",
+    "small": "Small",
+    "medium": "Medium",
+    "large": "Large"
+  },
+  "nudge": {
+    "refreshesOn": "Refreshes on {date}.",
+    "refreshesNext": "Refreshes next month.",
+    "startTitle": "One long video. A week of shorts.",
+    "startDescription": "Plans from {price}/mo for {length} of video a month. Set everything up first, then pick a plan when you're ready.",
+    "startPerks": {
+      "ai": "Best moments, picked and ranked by AI",
+      "captions": "Word-synced captions, framed for 9:16",
+      "formats": "Ready for TikTok, Reels and Shorts"
+    },
+    "startAction": "Start clipping",
+    "startFootnote": "Cancel anytime",
+    "limitTitle": "You've used all {length} of video this month",
+    "limitWithPlan": "{refreshes} Or keep going with {plan}: {limit} of video a month.",
+    "limitAppStore": "{refreshes} You can change plans in the SupoClip iOS app.",
+    "getPlan": "Get {plan}",
+    "remaining": "{count, plural, one {# minute of video left this month} other {# minutes of video left this month}}",
+    "nearWithPlan": "{refreshes} Need more room? {plan} gives you {limit} of video a month.",
+    "upgrade": "Upgrade",
+    "limitTitleAll": "You've used this month's video minutes",
+    "teamStartTitle": "{team} doesn't have an active Team plan",
+    "teamStartOwner": "Start it in team settings and everyone on the team can make clips.",
+    "teamStartMember": "Ask the team owner to start the Team plan.",
+    "teamSettings": "Team settings",
+    "memberPausedTitle": "Your seat is paused for new videos",
+    "memberPausedBody": "A team admin paused video generation for you. Ask them to turn it back on.",
+    "teamLimitOwner": "{refreshes} Or add seats for more shared hours.",
+    "teamLimitMember": "{refreshes} Or ask the team owner to add seats.",
+    "manageSeats": "Add seats",
+    "memberLimitTitle": "You've used your {limit} minutes for this month",
+    "memberLimitBody": "{refreshes} A team admin can raise your limit.",
+    "memberNearBody": "{refreshes} A team admin set your limit to {limit} minutes a month."
+  },
+  "clipLength": {
+    "picker": "Clip length",
+    "title": "Clip length",
+    "auto": "Auto length",
+    "short": "Short (15–30s)",
+    "medium": "Medium (30–60s)",
+    "long": "Long (1–2 min)",
+    "hint": "Target length before pause and filler removal. Your choice is saved as your default.",
+    "saveError": "Could not save your default. This video will still use your choice."
+  },
+  "whatToMake": "What do you want to make?",
+  "workflows": {
+    "highlights": {
+      "label": "Highlights",
+      "hint": "The best standalone moments"
+    },
+    "series": {
+      "label": "Series",
+      "hint": "Consecutive parts that tell the whole story"
+    },
+    "topic": {
+      "label": "Topic",
+      "hint": "Every strong moment about one subject"
+    },
+    "recap": {
+      "label": "Recap",
+      "hint": "One short video covering the main points"
+    },
+    "trailer": {
+      "label": "Trailer",
+      "hint": "One short preview that makes people watch the full video"
+    }
+  },
+  "subtitleByWorkflow": {
+    "highlights": "Drop in a long video. Get back captioned, ready-to-post clips.",
+    "series": "Drop in a long video. Get back a numbered series that keeps people watching.",
+    "topic": "Drop in a long video. Get back every strong moment about your topic.",
+    "recap": "Drop in a long video. Get back one short video with the main points.",
+    "trailer": "Drop in a long video. Get back a short preview that makes people want the whole thing."
+  },
+  "generateByWorkflow": {
+    "highlights": "Generate clips",
+    "series": "Generate series",
+    "topic": "Find moments",
+    "recap": "Make recap",
+    "trailer": "Make trailer"
+  },
+  "topic": {
+    "placeholder": "What topic? e.g. building a business",
+    "required": "Enter a topic to look for.",
+    "label": "Topic"
+  },
+  "parts": {
+    "picker": "Parts: {value}",
+    "title": "Number of parts",
+    "auto": "Auto",
+    "autoHint": "We pick the number of parts the story supports",
+    "count": "{count, plural, one {# part} other {# parts}}"
+  },
+  "lengthByWorkflow": {
+    "series": {
+      "picker": "Part length",
+      "auto": "Auto (1–1.5 min)",
+      "short": "Short (30–60s)",
+      "medium": "Medium (45–90s)",
+      "long": "Long (1.5–3 min)",
+      "hint": "Length of each part before pause and filler removal."
+    },
+    "recap": {
+      "picker": "Recap length",
+      "auto": "Auto (fits the video)",
+      "short": "Short (about 45s)",
+      "medium": "Medium (about 75s)",
+      "long": "Long (about 2 min)",
+      "hint": "Total length of the recap."
+    },
+    "trailer": {
+      "picker": "Trailer length",
+      "auto": "Auto (about 30s)",
+      "short": "Short (about 20s)",
+      "medium": "Medium (about 40s)",
+      "long": "Long (about 1 min)",
+      "hint": "Total length of the trailer."
+    }
+  },
+  "instructions": {
+    "chip": "Instructions",
+    "remove": "Remove instructions",
+    "counter": "{used}/{max}",
+    "placeholder": {
+      "highlights": "Anything specific? e.g. only the funny moments, skip the sponsor read",
+      "series": "Anything specific? e.g. focus on the story about the first startup",
+      "topic": "Anything specific? e.g. practical advice only, no personal stories",
+      "recap": "Anything specific? e.g. focus on the money advice",
+      "trailer": "Anything specific? e.g. keep it mysterious, focus on the conflict"
+    }
+  },
+  "urlRescue": {
+    "moved": "Moved “{text}” to instructions.",
+    "undo": "Undo",
+    "notALink": "That looks like an instruction, not a link. Paste the video link here and we'll keep this as instructions.",
+    "moveToInstructions": "Move to instructions"
+  },
+  "suggestWorkflow": {
+    "series": "Make a series instead?",
+    "seriesCount": "Make a {count}-part series instead?",
+    "topic": "Find every moment about “{topic}” instead?",
+    "recap": "Make a recap instead?",
+    "trailer": "Make a trailer instead?"
+  },
+  "tooShort": {
+    "series": "This video is {duration}. A series needs at least 2 minutes. Highlights works great here.",
+    "recap": "This video is {duration}. Recaps work on videos over 3 minutes.",
+    "trailer": "This video is {duration}. Trailers work on videos over 3 minutes.",
+    "topic": "This video is {duration}. Topic search needs at least 1 minute.",
+    "useHighlights": "Use Highlights"
+  },
+  "workflowErrors": {
+    "INVALID_WORKFLOW": "That option isn't supported.",
+    "INVALID_WORKFLOW_OPTIONS": "Those options aren't supported.",
+    "TOPIC_REQUIRED": "Enter a topic to look for.",
+    "TOPIC_TOO_LONG": "Keep the topic under 120 characters.",
+    "INVALID_PART_COUNT": "Choose Auto or 2 to 10 parts.",
+    "INSTRUCTIONS_TOO_LONG": "Keep instructions under 500 characters.",
+    "SOURCE_TOO_SHORT_FOR_SERIES": "This video is too short to split into a series. Try Highlights instead.",
+    "TOO_MANY_PARTS": "This video fits at most {max_parts} parts. Choose fewer parts or Auto.",
+    "SOURCE_TOO_SHORT_FOR_RECAP": "This video is already short. Recaps work on videos over 3 minutes.",
+    "SOURCE_TOO_SHORT_FOR_TRAILER": "Trailers work on videos over 3 minutes.",
+    "SOURCE_TOO_SHORT_FOR_TOPIC": "This video is too short to search by topic. Try Highlights instead.",
+    "WORKFLOW_NOT_AVAILABLE": "This option isn't available on your account yet.",
+    "INVALID_WORKFLOW_SETTING": "That advanced setting isn't supported."
+  },
+  "palette": {
+    "series": "New series",
+    "topic": "New topic search",
+    "recap": "New recap",
+    "trailer": "New trailer"
+  },
+  "advanced": {
+    "chip": "Advanced",
+    "title": "Advanced",
+    "body": "The defaults work for most videos. Only change what you have a reason to.",
+    "auto": "Auto",
+    "reset": "Reset to defaults",
+    "outOfRange": "Enter a whole number from {min} to {max}.",
+    "settings": {
+      "hook_title": {
+        "label": "Title on the video",
+        "hint": "Burn the title in for the first few seconds."
+      },
+      "junction_style": {
+        "label": "Cuts between sections",
+        "hint": "How the pieces of a clip join."
+      },
+      "cold_open": {
+        "label": "Cold open",
+        "hint": "Part 1 starts on a line from later in the series, then goes back to the beginning."
+      },
+      "part_labels": {
+        "label": "Part numbers in titles",
+        "hint": "Start each title with “Part 2:”."
+      },
+      "endings": {
+        "label": "Part endings",
+        "hint": "Where each part stops."
+      },
+      "coverage": {
+        "label": "What to draw from",
+        "hint": "How much of the video the result covers."
+      },
+      "max_clips": {
+        "label": "Number of clips",
+        "hint": "The most clips to make."
+      },
+      "match": {
+        "label": "Topic match",
+        "hint": "What to do when the video only comes close to your topic."
+      },
+      "on_screen_points": {
+        "label": "Show each point on screen",
+        "hint": "Name each point in text as it starts."
+      },
+      "target_seconds": {
+        "label": "Length in seconds",
+        "hint": "Replaces the length you picked above."
+      },
+      "max_points": {
+        "label": "Most points",
+        "hint": "Fewer points leave each one more room, and the recap may run shorter."
+      },
+      "spoilers": {
+        "label": "Spoilers",
+        "hint": "Whether the trailer may use lines that give the ending away."
+      },
+      "ending": {
+        "label": "Last line",
+        "hint": "What the trailer ends on."
+      }
+    },
+    "choices": {
+      "auto": "Automatic",
+      "soft": "Soft fade",
+      "hard": "Hard cut",
+      "cliffhanger": "Leave people wanting the next part",
+      "natural": "Finish the thought",
+      "best_chapters": "The best chapters",
+      "start_to_finish": "In order, from the start",
+      "whole_video": "The whole video",
+      "best_moments": "Only the best moments",
+      "broad": "Allow a close match",
+      "strict": "Exact topic only",
+      "relaxed": "Allowed",
+      "question": "A question"
+    }
+  },
+  "edits": {
+    "section": "Edits",
+    "title": "Edit intensity",
+    "body": "The AI tags the moments that matter. You pick how hard each one hits.",
+    "intensity": {
+      "off": {
+        "label": "Off",
+        "hint": "Clean cuts, nothing added"
+      },
+      "subtle": {
+        "label": "Subtle",
+        "hint": "Reframes now and then, a quiet music bed"
+      },
+      "bold": {
+        "label": "Bold",
+        "hint": "Punch-ins on the key moments, hits on cuts"
+      },
+      "max": {
+        "label": "Max",
+        "hint": "Fast reframes, louder hits and music"
+      }
+    },
+    "offHint": "Turn edits on to add reframes, sound effects and music on the moments that matter.",
+    "groups": {
+      "sound": "Sound",
+      "motion": "Motion",
+      "retention": "Keep them watching"
+    },
+    "options": {
+      "sfx": {
+        "label": "Sound effects",
+        "hint": "Short hits and pops on cuts and graphics"
+      },
+      "music": {
+        "label": "Music",
+        "hint": "A bed that ducks under the voice"
+      },
+      "musicMood": "Music mood",
+      "zooms": {
+        "label": "Zooms",
+        "hint": "Reframes and short pushes on the key moments"
+      },
+      "shake": {
+        "label": "Camera shake",
+        "hint": "A jolt on the hardest hits"
+      },
+      "transitions": {
+        "label": "Transitions",
+        "hint": "A rare flash where the clip cuts"
+      },
+      "speed": {
+        "label": "Speed ramps and freezes",
+        "hint": "Speed through set-ups, freeze before a payoff"
+      },
+      "censor": {
+        "label": "Swearing",
+        "hint": "How bad words are covered"
+      },
+      "wait_for_it": {
+        "label": "“Wait for it” sticker",
+        "hint": "Teases a payoff that's coming"
+      },
+      "progress_bar": {
+        "label": "Progress bar",
+        "hint": "A thin bar along the bottom edge"
+      },
+      "loop_ending": {
+        "label": "Loop ending",
+        "hint": "Fades the end into the start so it replays smoothly"
+      },
+      "reactions": {
+        "label": "GIF reactions",
+        "hint": "A reaction GIF on the funniest moments"
+      }
+    },
+    "moods": {
+      "auto": "Match the video",
+      "hype": "Hype",
+      "chill": "Chill",
+      "dramatic": "Dramatic",
+      "funny": "Funny",
+      "inspiring": "Inspiring",
+      "dark": "Dark",
+      "aggressive": "Aggressive"
+    },
+    "censor": {
+      "off": "Leave as is",
+      "bleep": "Bleep",
+      "bleep_bar": "Bleep and cover mouth",
+      "bleep_pixelate": "Bleep and pixelate mouth"
+    },
+    "fineTune": "Fine-tune"
+  },
+  "animatedCaptions": {
+    "title": "Animated",
+    "demoLine": "Our revenue grew 300% in just one year",
+    "demoSticker": "No way!",
+    "needsFace": "Best with a face on camera",
+    "templates": {
+      "marker_circle": {
+        "name": "Marker Circle",
+        "description": "Hand-drawn circles, underlines and arrows on the key words"
+      },
+      "emoji_drop": {
+        "name": "Emoji Drop",
+        "description": "Words appear as they’re spoken, with an emoji under the big moments"
+      },
+      "slam": {
+        "name": "Slam",
+        "description": "Huge keywords slam onto the screen"
+      },
+      "behind_head": {
+        "name": "Behind Head",
+        "description": "One giant word appears behind the speaker"
+      },
+      "stat_counter": {
+        "name": "Stat Counter",
+        "description": "Spoken numbers count up and stamp into place"
+      },
+      "kinetic_stack": {
+        "name": "Kinetic Stack",
+        "description": "The hook stacks up the screen in bold rows"
+      },
+      "decode_glitch": {
+        "name": "Decode Glitch",
+        "description": "Letters scramble and lock into place"
+      },
+      "highlighter_swipe": {
+        "name": "Highlighter",
+        "description": "Words appear as they’re spoken; the key word lands in a solid box"
+      },
+      "face_doodles": {
+        "name": "Face Doodles",
+        "description": "Sparkles, horns and arrows that follow the speaker's face"
+      }
+    }
+  },
+  "sourceRange": {
+    "start": "Start",
+    "end": "End",
+    "format": "Use h:mm:ss, like 1:30:00",
+    "first": "First {minutes} min",
+    "last": "Last {minutes} min",
+    "selected": "Clipping {length}. Uses {minutes} minutes.",
+    "problems": {
+      "invalid": "Enter a start and an end time.",
+      "order": "The end has to come after the start.",
+      "outOfBounds": "Pick times between 0:00 and {duration}.",
+      "tooShort": "Pick at least {min} minute.",
+      "tooLong": "Pick {max} minutes or less."
+    }
+  },
+  "tooLongPanel": {
+    "title": "This {runtime} video is over your {minutes}-minute limit",
+    "body": "Pick a part up to {minutes} minutes and we'll clip just that. Only that part counts toward your minutes.",
+    "bodyUpgrade": "Pick a part up to {minutes} minutes and we'll clip just that, or upgrade to {plan} for videos up to {nextMinutes} minutes. Only the part you pick counts toward your minutes.",
+    "submit": "Clip this part",
+    "cancel": "Choose another video",
+    "label": "Part of the video to clip",
+    "upgradeTo": "Upgrade to {plan} (up to {minutes} min per video)",
+    "checkoutFailed": "Checkout didn't open. Try again in a moment."
+  },
+  "lengthErrors": {
+    "durationUnavailable": {
+      "title": "We couldn't read this video's length",
+      "body": "If it's a livestream that's still going, wait until it ends and paste the finished recording. If it has already ended, try again in a minute. No minutes were used."
+    },
+    "tooLongNoRange": {
+      "title": "This video is over your {minutes}-minute limit",
+      "body": "It's longer than your plan allows, and part of it can't be picked here. Try the finished recording or a shorter video. No minutes were used."
+    }
+  },
+  "askAgentInstead": "Ask the agent instead",
+  "creatorTag": "Creator",
+  "agentLapsed": "Your Agent chats are saved.",
+  "agentTrialEnded": "You've used your free Agent messages.",
+  "agentBackWithCreator": "Keep going with Creator"
+}

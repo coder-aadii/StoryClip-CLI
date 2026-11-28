@@ -1,0 +1,347 @@
+import { destinationCheckoutTax } from "@/lib/stripe-billing-safety";
+import { safeReturnPath, withQuery } from "@/lib/return-path";
+import { accountPortalConfiguration } from "@/lib/stripe-accounts";
+import { stripeAccountsEnabled } from "@/lib/stripe-accounts";
+import { billingAccountRoute } from "@/server/stripe-account-routing";
+import { stripeAccountContext, stripePriceEnvPrefix } from "@/lib/stripe-accounts";
+import { NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+import prisma from "@/lib/prisma";
+import { monetizationEnabled } from "@/lib/monetization";
+import { getStripeClient } from "@/lib/stripe";
+import { getServerBillingPlan } from "@/server/billing-plans";
+import { isBillingInterval, type BillingInterval } from "@/lib/billing-plans";
+import { findCreatorOffer, INVALID_CREATOR_CODE, type CreatorOffer } from "@/server/affiliates";
+import { captureServerEvent, type ServerEventProperties } from "@/server/analytics";
+import {
+  CHECKOUT_BLOCKING_STATUSES,
+  EXISTING_SUBSCRIPTION_NEEDS_PAYMENT,
+  EXISTING_SUBSCRIPTION_NEEDS_PAYMENT_MESSAGE,
+  subscriptionNeedsPayment,
+} from "@/lib/subscription-status";
+import type Stripe from "stripe";
+import { HOSTED_APP_URL } from "@/lib/site";
+import { pixPaymentMethodOptions } from "@/server/pix-mandate";
+
+// The Stripe account (Shiori LLC) also sells other products, so SupoClip's look is set per session
+// instead of in the account's branding settings. The icon comes from the hosted site so Stripe can
+// always fetch it, including from local and self-hosted checkouts.
+const CHECKOUT_BRANDING: Stripe.Checkout.SessionCreateParams.BrandingSettings = {
+  display_name: "SupoClip",
+  icon: { type: "url", url: `${HOSTED_APP_URL}/logo.png` },
+  button_color: "#eb5116",
+  background_color: "#ffffff",
+  font_family: "inter",
+  border_style: "rounded",
+};
+
+const APP_STORE_MANAGED_MESSAGE = "Your subscription is managed through the App Store";
+const PAID_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+/** Stripe accepts 30 minutes to 24 hours. */
+const CHECKOUT_EXPIRES_AFTER_SECONDS = 60 * 60;
+
+export async function POST(request: Request) {
+  if (!monetizationEnabled) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user?.id || !session.user.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let requestedPlan = "pro";
+  let interval: BillingInterval = "month";
+  let enteredCode: string | null = null;
+  // Where checkout comes back to (the onboarding's preview project); Settings otherwise.
+  let returnPath = "/settings";
+  try {
+    const body = await request.json();
+    if (typeof body?.plan === "string") {
+      requestedPlan = body.plan;
+    }
+    if (body?.interval !== undefined) {
+      if (!isBillingInterval(body.interval)) {
+        return NextResponse.json({ error: "Unknown billing interval" }, { status: 400 });
+      }
+      interval = body.interval;
+    }
+    if (typeof body?.code === "string" && body.code.trim()) {
+      enteredCode = body.code.trim();
+    }
+    returnPath = safeReturnPath(body?.return_to) ?? returnPath;
+  } catch {
+    requestedPlan = "pro";
+  }
+
+  return billingAccountRoute(session.user.id, "checkout", async () => {
+    const billingPlan = getServerBillingPlan(requestedPlan);
+    if (!billingPlan) {
+      return NextResponse.json(
+        { error: "Unknown billing plan" },
+        { status: 400 },
+      );
+    }
+    const userId = session.user.id;
+    const trackCheckout = (
+      flow: ServerEventProperties["checkout_started"]["flow"],
+      hasCreatorCode = false,
+    ) =>
+      captureServerEvent({
+        event: "checkout_started",
+        distinctId: userId,
+        properties: {
+          plan: billingPlan.id,
+          interval,
+          provider: "stripe",
+          has_creator_code: hasCreatorCode,
+          flow,
+        },
+      });
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        stripe_customer_id: true,
+        stripe_subscription_id: true,
+        subscription_provider: true,
+        subscription_status: true,
+      },
+    });
+
+    if (
+      user?.subscription_provider === "apple" &&
+      PAID_SUBSCRIPTION_STATUSES.has(user.subscription_status)
+    ) {
+      return NextResponse.json(
+        { error: APP_STORE_MANAGED_MESSAGE },
+        { status: 409 },
+      );
+    }
+
+    const priceId = billingPlan.priceIds[interval];
+    if (!priceId) {
+      const fallbackUrl =
+        !stripeAccountsEnabled() && billingPlan.id === "pro" && interval === "month"
+          ? process.env[`${stripePriceEnvPrefix()}CHECKOUT_URL`]
+          : null;
+      if (!fallbackUrl) {
+        return NextResponse.json(
+          {
+            error: `Stripe ${interval}ly price is not configured for ${billingPlan.id}`,
+          },
+          { status: 500 },
+        );
+      }
+      trackCheckout("payment_link");
+      return NextResponse.json({ url: fallbackUrl });
+    }
+
+    const checkoutTax = await destinationCheckoutTax();
+    const stripe = getStripeClient();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3107";
+
+    // Existing subscribers change plans in place; a second Checkout would bill them twice.
+    if (
+      user?.stripe_customer_id &&
+      user.stripe_subscription_id &&
+      PAID_SUBSCRIPTION_STATUSES.has(user.subscription_status)
+    ) {
+      const planChange = await createPlanChangeSession(stripe, {
+        customerId: user.stripe_customer_id,
+        subscriptionId: user.stripe_subscription_id,
+        priceId,
+        appUrl,
+      });
+      if (planChange.ok) trackCheckout("plan_change");
+      return planChange;
+    }
+
+    let customerId = user?.stripe_customer_id || null;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: session.user.email,
+        name: session.user.name || undefined,
+        metadata: { userId: session.user.id, app: "supoclip" },
+      });
+      customerId = customer.id;
+
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          stripe_customer_id: customerId,
+          ...(stripeAccountContext()
+            ? { stripe_account_id: stripeAccountContext()?.accountId }
+            : {}),
+        },
+      });
+    } else {
+      // The DB plan can already say Free while Stripe is still retrying. A second
+      // Checkout subscription on this customer would bill them twice if the old one recovers.
+      const existing = await findBlockingSubscription(stripe, customerId);
+      if (existing) {
+        if (subscriptionNeedsPayment(existing.status)) {
+          return NextResponse.json(
+            {
+              error: EXISTING_SUBSCRIPTION_NEEDS_PAYMENT_MESSAGE,
+              code: EXISTING_SUBSCRIPTION_NEEDS_PAYMENT,
+            },
+            { status: 409 },
+          );
+        }
+        const planChange = await createPlanChangeSession(stripe, {
+          customerId,
+          subscriptionId: existing.id,
+          priceId,
+          appUrl,
+        });
+        if (planChange.ok) trackCheckout("plan_change");
+        return planChange;
+      }
+    }
+
+    // A typed code must be valid; a code from the signup ?ref= link is applied when it matches one.
+    let offer: CreatorOffer | null = null;
+    if (enteredCode) {
+      offer = await findCreatorOffer(prisma, enteredCode);
+      if (!offer) {
+        return NextResponse.json(
+          { error: "That creator code isn't valid", code: INVALID_CREATOR_CODE },
+          { status: 400 },
+        );
+      }
+      if (offer.affiliateUserId === session.user.id) {
+        return NextResponse.json(
+          {
+            error: "You can't use your own creator code",
+            code: INVALID_CREATOR_CODE,
+          },
+          { status: 400 },
+        );
+      }
+    } else {
+      const acquisition = await prisma.userAcquisition.findUnique({
+        where: { user_id: session.user.id },
+        select: { ref: true },
+      });
+      if (acquisition?.ref) {
+        offer = await findCreatorOffer(prisma, acquisition.ref);
+        if (offer?.affiliateUserId === session.user.id) offer = null;
+      }
+    }
+
+    // Tilly analytics attributes revenue to the visitor through this cookie.
+    const tillyVisitorId = request.headers
+      .get("cookie")
+      ?.match(/(?:^|;\s*)tilly_visitor_id=([^;]+)/)?.[1];
+
+    const paymentMethodOptions = await pixPaymentMethodOptions(stripe, priceId, interval);
+
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      ...checkoutTax,
+      customer: customerId,
+      metadata: {
+        userId: session.user.id,
+        app: "supoclip",
+        plan: billingPlan.id,
+        interval,
+        ...(offer ? { creator_code: offer.code } : {}),
+        ...(tillyVisitorId
+          ? { tilly_visitor_id: decodeURIComponent(tillyVisitorId).slice(0, 100) }
+          : {}),
+      },
+      line_items: [{ price: priceId, quantity: 1 }],
+      // Creator commission follows the subscription after the discount ends.
+      ...(offer?.affiliateUserId
+        ? { subscription_data: { metadata: { userId: session.user.id, creator_code: offer.code } } }
+        : {}),
+      branding_settings: CHECKOUT_BRANDING,
+      ...(paymentMethodOptions ? { payment_method_options: paymentMethodOptions } : {}),
+      ...(offer
+        ? { discounts: [{ promotion_code: offer.promotionCodeId }] }
+        : {}),
+      // An unfinished checkout (often a declined card) expires after an hour, and the
+      // checkout.session.expired webhook emails its recovery link while the intent is fresh.
+      expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_EXPIRES_AFTER_SECONDS,
+      after_expiration: { recovery: { enabled: true } },
+      success_url: `${appUrl}${withQuery(returnPath, "billing", "success")}`,
+      cancel_url: `${appUrl}${withQuery(returnPath, "billing", "cancelled")}`,
+    });
+
+    if (!checkoutSession.url) {
+      return NextResponse.json(
+        { error: "Unable to create checkout session" },
+        { status: 500 },
+      );
+    }
+
+    trackCheckout("checkout", Boolean(offer));
+    return NextResponse.json({ url: checkoutSession.url });
+  });
+}
+
+async function findBlockingSubscription(stripe: Stripe, customerId: string) {
+  // Payment problems win over an active sub so we never open a second checkout
+  // or a plan change while an invoice is still unpaid.
+  const pages = await Promise.all(
+    CHECKOUT_BLOCKING_STATUSES.map((status) =>
+      stripe.subscriptions.list({ customer: customerId, status, limit: 1 }),
+    ),
+  );
+  for (const page of pages) {
+    if (page.data[0]) return page.data[0];
+  }
+  return null;
+}
+
+async function createPlanChangeSession(
+  stripe: Stripe,
+  {
+    customerId,
+    subscriptionId,
+    priceId,
+    appUrl,
+  }: { customerId: string; subscriptionId: string; priceId: string; appUrl: string }
+) {
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const item = subscription.items.data[0];
+  if (!item) {
+    return NextResponse.json({ error: "Subscription has no items" }, { status: 500 });
+  }
+  if (item.price.id === priceId) {
+    return NextResponse.json({ error: "You're already on this plan" }, { status: 409 });
+  }
+
+  const returnUrl = `${appUrl}/settings`;
+  try {
+    const portalSession = await stripe.billingPortal.sessions.create({
+      ...accountPortalConfiguration(),
+      customer: customerId,
+      return_url: returnUrl,
+      flow_data: {
+        type: "subscription_update_confirm",
+        subscription_update_confirm: {
+          subscription: subscriptionId,
+          items: [{ id: item.id, price: priceId, quantity: 1 }],
+        },
+        after_completion: {
+          type: "redirect",
+          redirect: { return_url: `${appUrl}/settings?billing=upgraded` },
+        },
+      },
+    });
+    return NextResponse.json({ url: portalSession.url });
+  } catch (error) {
+    // Portal configs without plan switching enabled reject the flow; the plain
+    // portal still lets the customer manage their subscription.
+    console.error("Failed to create plan change portal session", error);
+    const portalSession = await stripe.billingPortal.sessions.create({
+      ...accountPortalConfiguration(),
+      customer: customerId,
+      return_url: returnUrl,
+    });
+    return NextResponse.json({ url: portalSession.url });
+  }
+}

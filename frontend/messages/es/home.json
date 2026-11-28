@@ -1,0 +1,538 @@
+{
+  "greeting": {
+    "upLate": "Trasnochando",
+    "goodMorning": "Buenos días",
+    "goodAfternoon": "Buenas tardes",
+    "goodEvening": "Buenas noches",
+    "named": "{greeting}, {name}"
+  },
+  "subtitle": "Suelta un video largo. Recibe clips con subtítulos, listos para publicar.",
+  "errors": {
+    "fonts": "No se pudieron cargar las fuentes en este momento.",
+    "notVideo": "Eso no parece un archivo de video. Prueba con MP4, MOV, MKV o WebM.",
+    "fontType": "Solo se admiten archivos .ttf y .otf para fuentes personalizadas.",
+    "uploadFont": "No se pudo subir la fuente",
+    "uploadFontRetry": "No se pudo subir la fuente. Inténtalo de nuevo.",
+    "processVideo": "No se pudo procesar el video. Inténtalo de nuevo.",
+    "fileTooLarge": "Este archivo pesa {size} y supera el límite de subida de {limit}. Prueba con una exportación más corta o un archivo más pequeño.",
+    "api": "Error de API: {status}"
+  },
+  "status": {
+    "uploading": "Subiendo video…",
+    "checkingLength": "Revisando la duración del video…",
+    "starting": "Iniciando la generación…",
+    "working": "Trabajando…",
+    "uploadingFont": "Subiendo…"
+  },
+  "drop": "Suelta para subir tu video",
+  "readyToUpload": "{size} · listo para subir",
+  "removeFile": "Quitar archivo",
+  "youtubeUrl": "URL de YouTube",
+  "urlPlaceholder": "Pega un enlace de YouTube o suelta un archivo de video",
+  "uploadFile": "Subir un archivo de video",
+  "upload": "Subir",
+  "defaultTemplate": "Predeterminado",
+  "defaultTemplateDescription": "Subtítulos palabra por palabra",
+  "captionStyle": "Estilo de subtítulos",
+  "customize": "Personalizar",
+  "resetTemplate": "Restablecer a la plantilla",
+  "font": "Fuente",
+  "uploadFont": "Subir fuente",
+  "customFontsPaid": "Usa tus propias fuentes con un plan de pago",
+  "searchFonts": "Buscar fuentes",
+  "templateDefault": "Predeterminado de la plantilla",
+  "noFontMatch": "Ninguna fuente coincide con tu búsqueda",
+  "color": "Color",
+  "template": "Plantilla",
+  "captionColor": "Color de subtítulos {color}",
+  "customColor": "Color personalizado",
+  "customCaptionColor": "Color de subtítulos personalizado",
+  "livePreview": "Vista previa en vivo",
+  "framing": "Encuadre",
+  "framingOptions": {
+    "vertical": {
+      "label": "Auto 9:16",
+      "hint": "Se adapta a los sujetos y al contexto"
+    },
+    "vertical_fit": {
+      "label": "Imagen completa 9:16",
+      "hint": "Mostrar todo en formato vertical"
+    },
+    "vertical_pan": {
+      "label": "Paneo del hablante",
+      "hint": "Sigue a quien está hablando"
+    },
+    "vertical_split": {
+      "label": "Pantalla dividida",
+      "hint": "Dos hablantes, uno sobre el otro"
+    },
+    "original": {
+      "label": "Original",
+      "hint": "Conserva la proporción del video original"
+    }
+  },
+  "captions": "Subtítulos",
+  "noCaptions": "Sin subtítulos",
+  "broll": "B-roll",
+  "brollHint": "Añade metraje de archivo de Pexels cuando se menciona algo que se puede mostrar",
+  "cleanup": "Limpieza",
+  "composerSettings": {
+    "chip": "Ajustes",
+    "tour": "Ver el recorrido",
+    "limits": "Límites de subida y detalles",
+    "reset": "Restablecer todos los ajustes",
+    "on": "Activado",
+    "off": "Desactivado"
+  },
+  "cleanupTitle": "Limpieza del clip",
+  "cleanupBody": "Reduce los silencios y corta sonidos de relleno al renderizar.",
+  "cleanupMore": "Más opciones",
+  "shortenPauses": "Acortar pausas largas",
+  "shortenPausesHint": "Recorta los silencios más largos que esto hasta dejar una respiración breve",
+  "pauseThreshold": "Umbral de pausa (ms)",
+  "removeFillers": "Quitar muletillas",
+  "removeFillersHint": "“um”, “uh”, “erm” y sonidos parecidos",
+  "extraWords": "Palabras o frases extra para cortar",
+  "extraWordsPlaceholder": "básicamente, literalmente, la verdad",
+  "generate": "Generar clips",
+  "limitNote": "{plan}: vídeos de hasta {minutes} minutos cada uno, enlazados o subidos. Cada vídeo usa su duración en minutos, comprobada antes de empezar.",
+  "uploadLimits": "Subidas de hasta {size}. Los videos por encima de 1080p o 60 fps se reducen automáticamente, conservando la proporción.",
+  "completionEmails": "Los correos de finalización siguen tu preferencia en <settings>Ajustes</settings>.",
+  "recent": "Recientes",
+  "viewLibrary": "Ver biblioteca",
+  "recentEmpty": "Tus clips aparecerán aquí. Pega un enlace arriba para crear tu primer lote.",
+  "previewHook": "El título de tu gancho va aquí",
+  "previewCaptions": "Así se ven tus subtítulos",
+  "captionSize": {
+    "size": "Tamaño",
+    "templateDefault": "Predeterminado de la plantilla",
+    "small": "Pequeño",
+    "medium": "Mediano",
+    "large": "Grande"
+  },
+  "nudge": {
+    "refreshesOn": "Se renueva el {date}.",
+    "refreshesNext": "Se renueva el próximo mes.",
+    "startTitle": "Un video largo. Una semana de shorts.",
+    "startDescription": "Planes desde {price}/mes por {length} de vídeo al mes. Configúralo todo antes y elige un plan cuando estés listo.",
+    "startPerks": {
+      "ai": "Los mejores momentos, elegidos y puntuados por IA",
+      "captions": "Subtítulos sincronizados palabra a palabra, en 9:16",
+      "formats": "Listos para TikTok, Reels y Shorts"
+    },
+    "startAction": "Empieza a recortar",
+    "startFootnote": "Cancela cuando quieras",
+    "limitTitle": "Has usado los {length} de vídeo de este mes",
+    "limitWithPlan": "{refreshes} O sigue con {plan}: {limit} de vídeo al mes.",
+    "limitAppStore": "{refreshes} Puedes cambiar de plan en la app de iOS de SupoClip.",
+    "getPlan": "Obtener {plan}",
+    "remaining": "{count, plural, one {Te queda # minuto de vídeo este mes} other {Te quedan # minutos de vídeo este mes}}",
+    "nearWithPlan": "{refreshes} ¿Necesitas más margen? {plan} te da {limit} de vídeo al mes.",
+    "upgrade": "Mejorar plan",
+    "limitTitleAll": "Has usado los minutos de vídeo de este mes",
+    "teamStartTitle": "{team} no tiene un plan Equipo activo",
+    "teamStartOwner": "Actívalo en los ajustes del equipo y todo el equipo podrá crear clips.",
+    "teamStartMember": "Pide al propietario del equipo que active el plan Equipo.",
+    "teamSettings": "Ajustes del equipo",
+    "memberPausedTitle": "Tu puesto está pausado para vídeos nuevos",
+    "memberPausedBody": "Un administrador del equipo pausó la generación de vídeo para ti. Pídele que la reactive.",
+    "teamLimitOwner": "{refreshes} O agrega puestos para tener más horas compartidas.",
+    "teamLimitMember": "{refreshes} O pide al propietario del equipo que agregue puestos.",
+    "manageSeats": "Agregar puestos",
+    "memberLimitTitle": "Has usado tus {limit} minutos de este mes",
+    "memberLimitBody": "{refreshes} Un administrador del equipo puede aumentar tu límite.",
+    "memberNearBody": "{refreshes} Un administrador del equipo fijó tu límite en {limit} minutos al mes."
+  },
+  "clipLength": {
+    "picker": "Duración del clip",
+    "title": "Duración del clip",
+    "auto": "Duración automática",
+    "short": "Corto (15–30 s)",
+    "medium": "Medio (30–60 s)",
+    "long": "Largo (1–2 min)",
+    "hint": "Duración objetivo antes de eliminar pausas y muletillas. Tu elección se guarda como predeterminada.",
+    "saveError": "No se pudo guardar la opción predeterminada. Este vídeo usará tu elección."
+  },
+  "whatToMake": "¿Qué quieres crear?",
+  "workflows": {
+    "highlights": {
+      "label": "Destacados",
+      "hint": "Los mejores momentos, cada uno por separado"
+    },
+    "series": {
+      "label": "Serie",
+      "hint": "Partes seguidas que cuentan toda la historia"
+    },
+    "topic": {
+      "label": "Tema",
+      "hint": "Cada momento fuerte sobre un tema"
+    },
+    "recap": {
+      "label": "Resumen",
+      "hint": "Un video corto con los puntos principales"
+    },
+    "trailer": {
+      "label": "Tráiler",
+      "hint": "Un adelanto corto que da ganas de ver el video completo"
+    }
+  },
+  "subtitleByWorkflow": {
+    "highlights": "Suelta un video largo. Recibe clips con subtítulos, listos para publicar.",
+    "series": "Suelta un video largo. Recibe una serie numerada que engancha de principio a fin.",
+    "topic": "Suelta un video largo. Recibe cada momento fuerte sobre tu tema.",
+    "recap": "Suelta un video largo. Recibe un video corto con los puntos principales.",
+    "trailer": "Suelta un video largo. Recibe un adelanto corto que da ganas de verlo completo."
+  },
+  "generateByWorkflow": {
+    "highlights": "Generar clips",
+    "series": "Generar serie",
+    "topic": "Buscar momentos",
+    "recap": "Crear resumen",
+    "trailer": "Crear tráiler"
+  },
+  "topic": {
+    "placeholder": "¿Qué tema? p. ej., cómo montar un negocio",
+    "required": "Escribe un tema para buscar.",
+    "label": "Tema"
+  },
+  "parts": {
+    "picker": "Partes: {value}",
+    "title": "Número de partes",
+    "auto": "Auto",
+    "autoHint": "Elegimos tantas partes como dé la historia",
+    "count": "{count, plural, one {# parte} other {# partes}}"
+  },
+  "lengthByWorkflow": {
+    "series": {
+      "picker": "Duración de cada parte",
+      "auto": "Auto (1–1,5 min)",
+      "short": "Corta (30–60 s)",
+      "medium": "Media (45–90 s)",
+      "long": "Larga (1,5–3 min)",
+      "hint": "Duración de cada parte antes de eliminar pausas y muletillas."
+    },
+    "recap": {
+      "picker": "Duración del resumen",
+      "auto": "Auto (según el video)",
+      "short": "Corto (unos 45 s)",
+      "medium": "Medio (unos 75 s)",
+      "long": "Largo (unos 2 min)",
+      "hint": "Duración total del resumen."
+    },
+    "trailer": {
+      "picker": "Duración del tráiler",
+      "auto": "Auto (unos 30 s)",
+      "short": "Corto (unos 20 s)",
+      "medium": "Medio (unos 40 s)",
+      "long": "Largo (cerca de 1 min)",
+      "hint": "Duración total del tráiler."
+    }
+  },
+  "instructions": {
+    "chip": "Instrucciones",
+    "remove": "Quitar instrucciones",
+    "counter": "{used}/{max}",
+    "placeholder": {
+      "highlights": "¿Algo en concreto? p. ej., solo los momentos graciosos, sin la parte del patrocinador",
+      "series": "¿Algo en concreto? p. ej., céntrate en la historia de la primera startup",
+      "topic": "¿Algo en concreto? p. ej., solo consejos prácticos, sin historias personales",
+      "recap": "¿Algo en concreto? p. ej., céntrate en los consejos de dinero",
+      "trailer": "¿Algo en concreto? p. ej., que tenga misterio, céntrate en el conflicto"
+    }
+  },
+  "urlRescue": {
+    "moved": "Pasamos “{text}” a las instrucciones.",
+    "undo": "Deshacer",
+    "notALink": "Eso parece una instrucción, no un enlace. Pega aquí el enlace del video y lo guardamos como instrucción.",
+    "moveToInstructions": "Pasar a instrucciones"
+  },
+  "suggestWorkflow": {
+    "series": "¿Mejor una serie?",
+    "seriesCount": "¿Mejor una serie de {count} partes?",
+    "topic": "¿Mejor buscar cada momento sobre “{topic}”?",
+    "recap": "¿Mejor un resumen?",
+    "trailer": "¿Mejor un tráiler?"
+  },
+  "tooShort": {
+    "series": "Este video dura {duration}. Una serie necesita al menos 2 minutos. Aquí los Destacados funcionan muy bien.",
+    "recap": "Este video dura {duration}. Los resúmenes funcionan con videos de más de 3 minutos.",
+    "trailer": "Este video dura {duration}. Los tráileres funcionan con videos de más de 3 minutos.",
+    "topic": "Este video dura {duration}. La búsqueda por tema necesita al menos 1 minuto.",
+    "useHighlights": "Usar Destacados"
+  },
+  "workflowErrors": {
+    "INVALID_WORKFLOW": "Esa opción no está disponible.",
+    "INVALID_WORKFLOW_OPTIONS": "Esos ajustes no están disponibles.",
+    "TOPIC_REQUIRED": "Escribe un tema para buscar.",
+    "TOPIC_TOO_LONG": "El tema debe tener menos de 120 caracteres.",
+    "INVALID_PART_COUNT": "Elige Auto o entre 2 y 10 partes.",
+    "INSTRUCTIONS_TOO_LONG": "Las instrucciones deben tener menos de 500 caracteres.",
+    "SOURCE_TOO_SHORT_FOR_SERIES": "Este video es demasiado corto para dividirlo en una serie. Prueba con Destacados.",
+    "TOO_MANY_PARTS": "En este video caben como máximo {max_parts} partes. Elige menos partes o Auto.",
+    "SOURCE_TOO_SHORT_FOR_RECAP": "Este video ya es corto. Los resúmenes funcionan con videos de más de 3 minutos.",
+    "SOURCE_TOO_SHORT_FOR_TRAILER": "Los tráileres funcionan con videos de más de 3 minutos.",
+    "SOURCE_TOO_SHORT_FOR_TOPIC": "Este video es demasiado corto para buscar por tema. Prueba con Destacados.",
+    "WORKFLOW_NOT_AVAILABLE": "Esta opción aún no está disponible en tu cuenta.",
+    "INVALID_WORKFLOW_SETTING": "Ese ajuste avanzado no es compatible."
+  },
+  "palette": {
+    "series": "Nueva serie",
+    "topic": "Nueva búsqueda por tema",
+    "recap": "Nuevo resumen",
+    "trailer": "Nuevo tráiler"
+  },
+  "advanced": {
+    "chip": "Avanzado",
+    "title": "Avanzado",
+    "body": "Los valores predeterminados funcionan para la mayoría de los videos. Cambia solo lo que tengas motivos para cambiar.",
+    "auto": "Automático",
+    "reset": "Restablecer valores predeterminados",
+    "outOfRange": "Escribe un número entero de {min} a {max}.",
+    "settings": {
+      "hook_title": {
+        "label": "Título en el video",
+        "hint": "Muestra el título durante los primeros segundos."
+      },
+      "junction_style": {
+        "label": "Cortes entre secciones",
+        "hint": "Cómo se unen las piezas de un clip."
+      },
+      "cold_open": {
+        "label": "Apertura en frío",
+        "hint": "La parte 1 empieza con una frase de más adelante en la serie y luego vuelve al principio."
+      },
+      "part_labels": {
+        "label": "Número de parte en los títulos",
+        "hint": "Cada título empieza con «Parte 2:»."
+      },
+      "endings": {
+        "label": "Finales de las partes",
+        "hint": "Dónde termina cada parte."
+      },
+      "coverage": {
+        "label": "De dónde sacar el material",
+        "hint": "Cuánto del video cubre el resultado."
+      },
+      "max_clips": {
+        "label": "Número de clips",
+        "hint": "La cantidad máxima de clips."
+      },
+      "match": {
+        "label": "Coincidencia del tema",
+        "hint": "Qué hacer si el video solo se acerca a tu tema."
+      },
+      "on_screen_points": {
+        "label": "Mostrar cada punto en pantalla",
+        "hint": "Nombra cada punto con texto cuando empieza."
+      },
+      "target_seconds": {
+        "label": "Duración en segundos",
+        "hint": "Reemplaza la duración que elegiste arriba."
+      },
+      "max_points": {
+        "label": "Máximo de puntos",
+        "hint": "Con menos puntos, cada uno tiene más espacio y el resumen puede quedar más corto."
+      },
+      "spoilers": {
+        "label": "Spoilers",
+        "hint": "Si el tráiler puede usar frases que revelen el final."
+      },
+      "ending": {
+        "label": "Última frase",
+        "hint": "Con qué termina el tráiler."
+      }
+    },
+    "choices": {
+      "auto": "Automático",
+      "soft": "Fundido suave",
+      "hard": "Corte directo",
+      "cliffhanger": "Dejar con ganas de la siguiente parte",
+      "natural": "Terminar la idea",
+      "best_chapters": "Los mejores capítulos",
+      "start_to_finish": "En orden, desde el principio",
+      "whole_video": "Todo el video",
+      "best_moments": "Solo los mejores momentos",
+      "broad": "Permitir una coincidencia cercana",
+      "strict": "Solo el tema exacto",
+      "relaxed": "Permitidos",
+      "question": "Una pregunta"
+    }
+  },
+  "edits": {
+    "section": "Edición",
+    "title": "Intensidad de edición",
+    "body": "La IA marca los momentos que importan. Tú eliges con cuánta fuerza golpea cada uno.",
+    "intensity": {
+      "off": {
+        "label": "Desactivada",
+        "hint": "Cortes limpios, sin añadidos"
+      },
+      "subtle": {
+        "label": "Sutil",
+        "hint": "Reencuadres de vez en cuando, música suave"
+      },
+      "bold": {
+        "label": "Marcada",
+        "hint": "Acercamientos en los momentos clave, golpes en los cortes"
+      },
+      "max": {
+        "label": "Máxima",
+        "hint": "Reencuadres rápidos, golpes y música más fuertes"
+      }
+    },
+    "offHint": "Activa las ediciones para añadir reencuadres, efectos de sonido y música en los momentos que importan.",
+    "groups": {
+      "sound": "Sonido",
+      "motion": "Movimiento",
+      "retention": "Que sigan mirando"
+    },
+    "options": {
+      "sfx": {
+        "label": "Efectos de sonido",
+        "hint": "Golpes cortos y pops en cortes y gráficos"
+      },
+      "music": {
+        "label": "Música",
+        "hint": "Una base que baja cuando habla la voz"
+      },
+      "musicMood": "Estilo de música",
+      "zooms": {
+        "label": "Zooms",
+        "hint": "Reencuadres y acercamientos cortos en los momentos clave"
+      },
+      "shake": {
+        "label": "Sacudida de cámara",
+        "hint": "Un golpe en los momentos más fuertes"
+      },
+      "transitions": {
+        "label": "Transiciones",
+        "hint": "Un destello ocasional donde el clip corta"
+      },
+      "speed": {
+        "label": "Rampas de velocidad y congelados",
+        "hint": "Acelera la preparación y congela antes del remate"
+      },
+      "censor": {
+        "label": "Palabrotas",
+        "hint": "Cómo se tapan las malas palabras"
+      },
+      "wait_for_it": {
+        "label": "Sticker «Espera…»",
+        "hint": "Anticipa un remate que está por llegar"
+      },
+      "progress_bar": {
+        "label": "Barra de progreso",
+        "hint": "Una barra fina en el borde inferior"
+      },
+      "loop_ending": {
+        "label": "Final en bucle",
+        "hint": "Funde el final con el inicio para que se repita sin cortes"
+      },
+      "reactions": {
+        "label": "Reacciones GIF",
+        "hint": "Un GIF de reacción en los momentos más graciosos"
+      }
+    },
+    "moods": {
+      "auto": "Según el video",
+      "hype": "Energética",
+      "chill": "Relajada",
+      "dramatic": "Dramática",
+      "funny": "Divertida",
+      "inspiring": "Inspiradora",
+      "dark": "Oscura",
+      "aggressive": "Agresiva"
+    },
+    "censor": {
+      "off": "Dejar tal cual",
+      "bleep": "Pitido",
+      "bleep_bar": "Pitido y tapar la boca",
+      "bleep_pixelate": "Pitido y pixelar la boca"
+    },
+    "fineTune": "Ajuste fino"
+  },
+  "animatedCaptions": {
+    "title": "Animados",
+    "demoLine": "Nuestros ingresos crecieron un 300% en solo un año",
+    "demoSticker": "¡No puede ser!",
+    "needsFace": "Mejor con una cara a cámara",
+    "templates": {
+      "marker_circle": {
+        "name": "Círculo de rotulador",
+        "description": "Círculos, subrayados y flechas a mano en las palabras clave"
+      },
+      "emoji_drop": {
+        "name": "Emoji Drop",
+        "description": "Las palabras aparecen al decirse, con un emoji bajo los grandes momentos"
+      },
+      "slam": {
+        "name": "Impacto",
+        "description": "Palabras clave enormes que golpean la pantalla"
+      },
+      "behind_head": {
+        "name": "Detrás de la cabeza",
+        "description": "Una palabra gigante aparece detrás de quien habla"
+      },
+      "stat_counter": {
+        "name": "Contador",
+        "description": "Las cifras dichas suben y se estampan en su sitio"
+      },
+      "kinetic_stack": {
+        "name": "Pila cinética",
+        "description": "El gancho se apila en filas gruesas"
+      },
+      "decode_glitch": {
+        "name": "Glitch decodificado",
+        "description": "Las letras se mezclan y encajan en su sitio"
+      },
+      "highlighter_swipe": {
+        "name": "Subrayador",
+        "description": "Las palabras aparecen al decirse; la palabra clave va en un recuadro de color"
+      },
+      "face_doodles": {
+        "name": "Garabatos en la cara",
+        "description": "Destellos, cuernos y flechas que siguen la cara de quien habla"
+      }
+    }
+  },
+  "sourceRange": {
+    "start": "Inicio",
+    "end": "Fin",
+    "format": "Usa h:mm:ss, por ejemplo 1:30:00",
+    "first": "Primeros {minutes} min",
+    "last": "Últimos {minutes} min",
+    "selected": "Se recortarán {length}. Usa {minutes} minutos.",
+    "problems": {
+      "invalid": "Escribe una hora de inicio y una de fin.",
+      "order": "El fin tiene que ir después del inicio.",
+      "outOfBounds": "Elige tiempos entre 0:00 y {duration}.",
+      "tooShort": "Elige al menos {min} minuto.",
+      "tooLong": "Elige {max} minutos o menos."
+    }
+  },
+  "tooLongPanel": {
+    "title": "Este video de {runtime} supera tu límite de {minutes} minutos",
+    "body": "Elige una parte de hasta {minutes} minutos y recortaremos solo esa. Solo esa parte cuenta para tus minutos.",
+    "bodyUpgrade": "Elige una parte de hasta {minutes} minutos y recortaremos solo esa, o pásate a {plan} para videos de hasta {nextMinutes} minutos. Solo la parte que elijas cuenta para tus minutos.",
+    "submit": "Recortar esta parte",
+    "cancel": "Elegir otro video",
+    "label": "Parte del video que quieres recortar",
+    "upgradeTo": "Pásate a {plan} (hasta {minutes} min por video)",
+    "checkoutFailed": "No se abrió el pago. Inténtalo de nuevo en un momento."
+  },
+  "lengthErrors": {
+    "durationUnavailable": {
+      "title": "No pudimos leer la duración de este video",
+      "body": "Si es un directo que sigue en curso, espera a que termine y pega la grabación final. Si ya terminó, inténtalo de nuevo en un minuto. No se usaron minutos."
+    },
+    "tooLongNoRange": {
+      "title": "Este video supera tu límite de {minutes} minutos",
+      "body": "Dura más de lo que permite tu plan y aquí no se puede elegir una parte. Prueba con la grabación final o con un video más corto. No se usaron minutos."
+    }
+  },
+  "askAgentInstead": "Mejor pregúntale al agente",
+  "creatorTag": "Creator",
+  "agentLapsed": "Tus chats con Agent están guardados.",
+  "agentTrialEnded": "Ya usaste tus mensajes gratis de Agent.",
+  "agentBackWithCreator": "Sigue con Creator"
+}

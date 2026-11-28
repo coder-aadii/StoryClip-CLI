@@ -1,0 +1,231 @@
+import { GET, PATCH } from "./route";
+import { getPrismaClient } from "@/server/prisma";
+import { getServerSession } from "@/server/session";
+
+vi.mock("@/server/session", () => ({
+  getServerSession: vi.fn(),
+}));
+
+vi.mock("@/server/prisma", () => ({
+  getPrismaClient: vi.fn(),
+}));
+
+describe("/api/preferences", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("returns 401 when no session exists", async () => {
+    vi.mocked(getServerSession).mockResolvedValue(null);
+
+    const response = await GET();
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+  });
+
+  it("returns user preferences for an authenticated user", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: "user-1" },
+    } as never);
+    vi.mocked(getPrismaClient).mockReturnValue({
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          default_font_family: "Inter",
+          default_font_size: 28,
+          default_font_color: "#123456",
+          notify_on_completion: false,
+          notify_on_publish: false,
+        }),
+      },
+    } as never);
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      fontFamily: "Inter",
+      fontSize: 28,
+      fontColor: "#123456",
+      notifyOnCompletion: false,
+      notifyOnPublish: false,
+      clipLength: "auto",
+      createSettings: {},
+      homeMode: null,
+    });
+  });
+
+  it("saves and returns the home screen choice", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as never);
+    const update = vi.fn().mockResolvedValue({ default_clip_length: "auto", create_settings: {}, home_mode: "agent" });
+    vi.mocked(getPrismaClient).mockReturnValue({ user: { update } } as never);
+
+    const response = await PATCH(new Request("http://localhost/api/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ homeMode: "agent" }),
+    }) as never);
+
+    expect(response.status).toBe(200);
+    expect(update.mock.calls[0][0].data).toEqual({ home_mode: "agent" });
+    await expect(response.json()).resolves.toMatchObject({ homeMode: "agent" });
+
+    const invalid = await PATCH(new Request("http://localhost/api/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ homeMode: "robot" }),
+    }) as never);
+    expect(invalid.status).toBe(400);
+  });
+
+  it("validates PATCH payloads", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: "user-1" },
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fontColor: "red" }),
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid fontColor (must be hex format like #FFFFFF)",
+    });
+  });
+
+  it("validates notifyOnCompletion", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: "user-1" },
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifyOnCompletion: "yes" }),
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid notifyOnCompletion",
+    });
+  });
+
+  it("validates notifyOnPublish", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: "user-1" },
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifyOnPublish: "yes" }),
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid notifyOnPublish",
+    });
+  });
+
+  it("updates stored preferences", async () => {
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: { id: "user-1" },
+    } as never);
+    const update = vi.fn().mockResolvedValue({
+      default_font_family: "TikTokSans-Regular",
+      default_font_size: 24,
+      default_font_color: "#FFFFFF",
+      notify_on_completion: true,
+      notify_on_publish: true,
+    });
+    vi.mocked(getPrismaClient).mockReturnValue({
+      user: { update },
+    } as never);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fontFamily: "TikTokSans-Regular",
+          fontSize: 24,
+          fontColor: "#FFFFFF",
+          notifyOnCompletion: true,
+          notifyOnPublish: true,
+        }),
+      }) as never,
+    );
+
+    expect(update).toHaveBeenCalled();
+    expect(update.mock.calls[0][0].data).toMatchObject({
+      notify_on_completion: true,
+      notify_on_publish: true,
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      fontFamily: "TikTokSans-Regular",
+      fontSize: 24,
+      fontColor: "#FFFFFF",
+      notifyOnCompletion: true,
+      notifyOnPublish: true,
+      clipLength: "auto",
+      createSettings: {},
+      homeMode: null,
+    });
+  });
+  it.each([{ fontSize: 0 }, { fontSize: null }, { fontSize: 24.5 }, { fontFamily: false }, { fontColor: "" }, null, []])("rejects invalid falsy or non-object preferences: %j", async (body) => {
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as never);
+    const response = await PATCH(new Request("http://localhost/api/preferences", {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }) as never);
+    expect(response.status).toBe(400);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+});
+
+it("saves clip length without overwriting unrelated preferences", async () => {
+  vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as never);
+  const update = vi.fn().mockResolvedValue({ default_clip_length: "long" });
+  vi.mocked(getPrismaClient).mockReturnValue({ user: { update } } as never);
+  const response = await PATCH(new Request("http://localhost/api/preferences", {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clipLength: "long" }),
+  }) as never);
+  expect(response.status).toBe(200);
+  expect((await response.json()).clipLength).toBe("long");
+  expect(update.mock.calls[0][0].data).toEqual({ default_clip_length: "long" });
+});
+
+it.each([null, "", "custom", 120, true, {}])("rejects invalid clip length: %j", async (clipLength) => {
+  vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as never);
+  const update = vi.fn();
+  vi.mocked(getPrismaClient).mockReturnValue({ user: { update } } as never);
+  const response = await PATCH(new Request("http://localhost/api/preferences", {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clipLength }),
+  }) as never);
+  expect(response.status).toBe(400);
+  expect(update).not.toHaveBeenCalled();
+
+});
+
+it("stores only well-formed create settings", async () => {
+  vi.mocked(getServerSession).mockResolvedValue({ user: { id: "user-1" } } as never);
+  const update = vi.fn().mockResolvedValue({ create_settings: { includeBroll: true } });
+  vi.mocked(getPrismaClient).mockReturnValue({ user: { update } } as never);
+  const request = (body: unknown) => new Request("http://localhost/api/preferences", { method: "PATCH", body: JSON.stringify(body) }) as never;
+
+  const response = await PATCH(request({ createSettings: { includeBroll: true, topic: "secret", outputFormat: "square" } }));
+  expect(response.status).toBe(200);
+  expect(update.mock.calls[0][0].data).toEqual({ create_settings: { includeBroll: true } });
+  expect((await PATCH(request({ createSettings: ["nope"] }))).status).toBe(400);
+});

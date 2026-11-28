@@ -1,0 +1,310 @@
+{
+  "errors": {
+    "action": "Die Aktion konnte nicht abgeschlossen werden. Versuch es noch einmal.",
+    "load": "Aufgabe konnte nicht geladen werden",
+    "fetchTask": "Aufgabe konnte nicht geladen werden: {status}",
+    "fetchClips": "Clips konnten nicht geladen werden: {status}",
+    "updateTitle": "Titel konnte nicht aktualisiert werden",
+    "deleteTask": "Aufgabe konnte nicht gelöscht werden",
+    "deleteClip": "Clip konnte nicht gelöscht werden",
+    "applySettings": "Einstellungen konnten nicht übernommen werden",
+    "deleteFont": "Schrift konnte nicht gelöscht werden",
+    "exportClip": "Clip konnte nicht exportiert werden",
+    "share": "Freigabelink konnte nicht erstellt werden",
+    "disableShare": "Freigabelink konnte nicht deaktiviert werden",
+    "downloadAll": "Die Clips konnten nicht heruntergeladen werden. Bitte versuche es erneut.",
+    "createTask": "Die neue Generierung konnte nicht gestartet werden"
+  },
+  "alreadyProcessing": "Dieses Video wird bereits verarbeitet.",
+  "toasts": {
+    "settingsApplied": "Generierungseinstellungen übernommen",
+    "cancelled": "Generierung abgebrochen",
+    "retryQueued": "Generierung zur Wiederholung eingereiht"
+  },
+  "hooks": {
+    "question": "Frage-Hook",
+    "statement": "Klare Aussage",
+    "statistic": "Daten/Statistiken",
+    "story": "Story-Hook",
+    "contrast": "Kontrast-Hook",
+    "none": "Kein Hook",
+    "fallback": "Keiner"
+  },
+  "back": "Bibliothek",
+  "titleLabel": "Titel der Generierung",
+  "saveTitle": "Titel speichern",
+  "cancelTitle": "Titelbearbeitung abbrechen",
+  "editTitle": "Titel bearbeiten",
+  "clipsTotal": "{count, plural, one {# Clip} other {# Clips}} · {duration} insgesamt",
+  "outputLength": "{duration} insgesamt",
+  "readOnly": "Nur-Lese-Ansicht einer Generierung von einem anderen Konto.",
+  "cancel": "Abbrechen",
+  "retryGeneration": "Generierung erneut versuchen",
+  "restyle": "Neu stylen",
+  "creatingLink": "Link wird erstellt…",
+  "linkCopied": "Link kopiert",
+  "originalVideo": "Originalvideo",
+  "copyShare": "Freigabelink kopieren",
+  "disabling": "Wird deaktiviert…",
+  "disableShare": "Freigabelink deaktivieren",
+  "openEditor": "Editor öffnen",
+  "deleteGeneration": "Generierung löschen",
+  "moreActions": "Weitere Aktionen",
+  "reconnectingOwn": "Verbindung zu den Live-Updates wird wiederhergestellt. Dein Video wird noch verarbeitet.",
+  "reconnectingOther": "Verbindung zu den Live-Updates wird wiederhergestellt. Diese Generierung wird noch verarbeitet.",
+  "cancelledTitle": "Generierung abgebrochen",
+  "cancelledBody": "Versuch diese Generierung erneut, wenn du bereit bist. Deine fertigen Clips bleiben erhalten.",
+  "failedTitle": "Verarbeitung fehlgeschlagen",
+  "failedBody": "Die Verarbeitung ist fehlgeschlagen. Versuch die Generierung erneut. Deine fertigen Clips bleiben erhalten.",
+  "failedBodyAgeRestricted": "Dieses YouTube-Video ist altersbeschränkt, daher können wir es nicht herunterladen. Lade das Video selbst herunter und lade die Datei hoch. Es wurden keine Minuten verbraucht.",
+  "failedBodyGeoRestricted": "Dieses YouTube-Video ist in unserer Region nicht verfügbar, daher können wir es nicht herunterladen. Lade das Video selbst herunter und lade die Datei hoch. Es wurden keine Minuten verbraucht.",
+  "backHome": "Zurück zur Startseite",
+  "noClipsTitle": "Keine Clips erzeugt",
+  "noClipsBody": "Die Generierung ist fertig, aber es wurden keine Clips erzeugt. Das Video hatte vielleicht keinen passenden Inhalt zum Schneiden.",
+  "tryAnother": "Anderes Video versuchen",
+  "sortLabel": "Clips sortieren",
+  "sort": {
+    "score": "Beste zuerst",
+    "timeline": "Zeitstrahl"
+  },
+  "downloadAs": "Herunterladen als",
+  "downloadFormat": "Download-Format",
+  "downloadAll": "Alle herunterladen",
+  "downloadAllHint": "Alle Clips als ZIP mit den Originaldateien herunterladen",
+  "preparingDownload": "Wird vorbereitet…",
+  "original": "Original",
+  "settingsTitle": "Generierungseinstellungen",
+  "settingsBody": "Stell Schrift, Untertitel und Bereinigung für die Clips dieser Generierung ein.",
+  "font": "Schrift",
+  "templateDefault": "Vorlagenstandard",
+  "color": "Farbe",
+  "captionTemplate": "Untertitelvorlage",
+  "selectStyle": "Stil wählen",
+  "defaultTemplate": "Standard",
+  "brollTitle": "B-Roll",
+  "brollBody": "Fügt Stock-Footage ein, wo der Sprecher etwas Zeigbares nennt. Beim Anwenden bleibt vorhandenes B-Roll erhalten und Clips ohne bekommen welches; ausgeschaltet wird es entfernt.",
+  "cleanupTitle": "Clip-Bereinigung",
+  "cleanupBody": "Wendet Schnitte für Stille und Füllwörter auf neu erzeugte Clips an.",
+  "shortenPauses": "Lange Pausen kürzen",
+  "pauseThreshold": "Pausenschwelle (ms)",
+  "removeFillers": "Füllwörter entfernen",
+  "extraWords": "Weitere gefilterte Wörter oder Sätze",
+  "extraWordsPlaceholder": "im Grunde, wortwörtlich, ehrlich gesagt",
+  "applying": "Wird angewendet...",
+  "apply": "Auf alle Clips anwenden",
+  "deleteFontTitle": "Schrift löschen?",
+  "deleteFontBody": "{name} löschen? Das lässt sich nicht rückgängig machen.",
+  "keepFont": "Schrift behalten",
+  "deleteFont": "Schrift löschen",
+  "deleteGenerationTitle": "Generierung löschen",
+  "deleteGenerationBody": "Willst du diese Generierung wirklich löschen? Alle Clips werden dauerhaft gelöscht und das lässt sich nicht rückgängig machen.",
+  "deleting": "Wird gelöscht...",
+  "delete": "Löschen",
+  "deleteClipTitle": "Clip löschen",
+  "deleteClipBody": "Willst du diesen Clip wirklich löschen? Das lässt sich nicht rückgängig machen.",
+  "clipNumber": "Clip {order}",
+  "topPick": "Top-Auswahl",
+  "preview": "{title} in der Vorschau",
+  "downloadNamed": "{title} herunterladen",
+  "download": "Herunterladen",
+  "edit": "Bearbeiten",
+  "deleteClip": "Clip löschen",
+  "position": "Clip {current} von {total}",
+  "previous": "Vorheriger Clip",
+  "next": "Nächster Clip",
+  "virality": "Viralitätswert",
+  "relevanceWithHook": "{hook} · {percent}% Relevanz",
+  "relevance": "{percent}% Relevanz",
+  "scores": {
+    "hook": "Hook",
+    "engagement": "Interaktion",
+    "value": "Nutzen",
+    "shareability": "Teilbarkeit"
+  },
+  "openInEditor": "Im Editor öffnen",
+  "steps": {
+    "fetching": "Video wird geholt",
+    "transcribing": "Wird transkribiert",
+    "finding": "Momente werden gesucht",
+    "rendering": "Clips werden gerendert"
+  },
+  "eta": {
+    "queued": "Wartet auf einen freien Worker",
+    "estimating": "Restzeit wird geschätzt…",
+    "stillDownloading": "Dein Video wird noch heruntergeladen…",
+    "minuteRange": "Noch etwa {low}–{high} Min.",
+    "underMinute": "Weniger als eine Minute",
+    "minutes": "Noch etwa {count} Min."
+  },
+  "clipOf": "Clip {current} von {total}",
+  "leavePage": "Du kannst die Seite verlassen — deine Clips warten in deiner Bibliothek.",
+  "sourceLength": "{duration} Quellvideo",
+  "percentComplete": "{progress}% fertig",
+  "transcript": {
+    "heading": "Transkript",
+    "seeMore": "Mehr anzeigen",
+    "full": "Vollständiges Transkript",
+    "forTitle": "Transkript für {title}",
+    "complete": "Vollständiges Transkript für diesen Clip"
+  },
+  "workflowBadge": {
+    "series": "Serie · {count, plural, one {# Teil} other {# Teile}}",
+    "topic": "Thema: {topic}",
+    "recap": "Zusammenfassung",
+    "trailer": "Trailer",
+    "seriesPending": "Serie"
+  },
+  "partOf": "Teil {n} von {total}",
+  "partLabel": "Teil {n}",
+  "endsOn": "Endet mit: {text}",
+  "postCaption": "Beitragstext",
+  "copyCaption": "Text kopieren",
+  "captionCopied": "Text kopiert",
+  "downloadAllParts": "Alle Teile herunterladen",
+  "downloadAllPartsHint": "Alle Teile als ZIP mit den Originaldateien herunterladen, der Reihe nach nummeriert",
+  "incompleteSeries": "Bei Teil {done} von {total} angehalten. Versuche es erneut, um die Serie abzuschließen.",
+  "coversPoints": "{count, plural, one {Deckt # Punkt ab} other {Deckt # Punkte ab}}",
+  "pointKinds": {
+    "opener": "Einstieg",
+    "closer": "Fazit"
+  },
+  "beatsTitle": "Aufbau",
+  "beatRoles": {
+    "cold_open": "Hook",
+    "context": "Kontext",
+    "escalation": "Steigerung",
+    "button": "Schluss"
+  },
+  "sourceMoment": "Ab {time} im Original",
+  "sourceMoments": "Stellen im Original",
+  "playFrom": "Ab {time} abspielen",
+  "topicHeader": "Über {topic} · {count, plural, one {# Moment} other {# Momente}}",
+  "instructionsUsed": "Anweisungen",
+  "stepsByWorkflow": {
+    "series": {
+      "finding": "Geschichte wird erfasst",
+      "rendering": "Teile werden geschnitten"
+    },
+    "topic": {
+      "finding": "Momente zu deinem Thema werden gesucht",
+      "rendering": "Clips werden gerendert"
+    },
+    "recap": {
+      "finding": "Hauptpunkte werden ausgewählt",
+      "rendering": "Zusammenfassung wird geschnitten"
+    },
+    "trailer": {
+      "finding": "Trailer wird geschrieben",
+      "rendering": "Trailer wird geschnitten"
+    }
+  },
+  "workflowNotes": {
+    "PART_COUNT_REDUCED": "Du wolltest {requested} Teile. Dieses Video gibt {actual} her.",
+    "STORY_ARC_SELECTED": "Aus dem stärksten Handlungsstrang gebaut ({start}–{end}). Mit Anweisungen kannst du einen anderen wählen.",
+    "CHAPTERS_LEFT_OUT": "Aus Platzgründen weggelassen: {chapters}. Mit Anweisungen bestimmst du, was bleibt.",
+    "NO_SINGLE_STORY": "Dieses Video erzählt keine durchgehende Geschichte. Die Serie folgt dem längsten zusammenhängenden Strang.",
+    "TOPIC_THIN": "Nur {count, plural, one {# Moment dreht} other {# Momente drehen}} sich wirklich um dieses Thema.",
+    "TOPIC_BROADENED": "„{topic}“ ist für dieses Video sehr weit gefasst, deshalb haben wir es so verstanden: {interpretation}",
+    "TARGET_SHORTENED": "Das Video ist kurz, deshalb ist auch die Zusammenfassung kürzer.",
+    "COARSE_TRANSCRIPT": "Dieses Transkript hat keine Wort-Zeitmarken, deshalb sind die Schnitte weniger genau.",
+    "SPONSOR_SKIPPED": "Einen Sponsorenteil haben wir weggelassen.",
+    "COLD_OPEN_SKIPPED": "Kein Satz war stark genug für ein Cold Open, daher beginnt Teil 1 am Anfang."
+  },
+  "workflowErrors": {
+    "topic_not_found": {
+      "title": "„{topic}“ kommt in diesem Video kaum vor",
+      "body": "Wir haben nur beiläufige Erwähnungen gefunden, keine ganzen Momente. Deine Minuten wurden erstattet.",
+      "suggestionsLabel": "In diesem Video geht es vor allem um:",
+      "mentions": "Kurz erwähnt bei {times}.",
+      "cta": "Stattdessen Highlights erstellen"
+    },
+    "source_too_short": {
+      "series": {
+        "title": "Dieses Video ist zu kurz für eine Serie",
+        "body": "Eine Serie braucht genug Geschichte für mindestens zwei Teile. Deine Minuten wurden erstattet."
+      },
+      "topic": {
+        "title": "Dieses Video ist zu kurz für eine Themensuche",
+        "body": "Die Themensuche funktioniert bei Videos über einer Minute. Deine Minuten wurden erstattet."
+      },
+      "recap": {
+        "title": "Dieses Video ist zu kurz für eine Zusammenfassung",
+        "body": "Zusammenfassungen funktionieren bei Videos über 3 Minuten. Deine Minuten wurden erstattet."
+      },
+      "trailer": {
+        "title": "Dieses Video ist zu kurz für einen Trailer",
+        "body": "Trailer funktionieren bei Videos über 3 Minuten. Deine Minuten wurden erstattet."
+      },
+      "cta": "Stattdessen Highlights erstellen"
+    },
+    "no_story": {
+      "title": "Wir haben keine Geschichte gefunden, die sich in Teile aufteilen lässt",
+      "body": "Kein Handlungsstrang in diesem Video ist lang genug. Deine Minuten wurden erstattet.",
+      "cta": "Stattdessen eine Zusammenfassung erstellen"
+    },
+    "recap_unsupported": {
+      "title": "Zu wenige unterschiedliche Punkte für eine Zusammenfassung",
+      "body": "Deine Minuten wurden erstattet.",
+      "cta": "Stattdessen Highlights erstellen"
+    },
+    "trailer_unbuildable": {
+      "title": "Ein Trailer ging nicht, ohne das Ende zu verraten",
+      "body": "Deine Minuten wurden erstattet.",
+      "cta": "Stattdessen eine Zusammenfassung erstellen"
+    },
+    "analysis_incomplete": {
+      "title": "Wir konnten nicht das ganze Video auswerten",
+      "body": "Ein Teil der Analyse ist fehlgeschlagen. Deine Minuten wurden erstattet.",
+      "cta": "Erneut versuchen"
+    },
+    "plan_failed": {
+      "title": "Der KI-Editor konnte diesen Plan nicht fertigstellen",
+      "body": "Deine Minuten wurden erstattet.",
+      "cta": "Erneut versuchen"
+    },
+    "render_incomplete": {
+      "title": "Ein Teil des Videos konnte nicht gerendert werden",
+      "body": "Deine Minuten wurden erstattet.",
+      "cta": "Erneut versuchen"
+    },
+    "transcript_untimed": {
+      "title": "Dieses Transkript hat keine Zeitmarken",
+      "body": "Für genaue Schnitte brauchen wir Zeitmarken. Lade stattdessen die Datei hoch.",
+      "cta": "Zurück zur Startseite"
+    },
+    "highlightsInstead": "Stattdessen Highlights erstellen"
+  },
+  "clipLoadFailed": "Dieser Clip konnte nicht geladen werden.",
+  "retryPlayback": "Wiedergabe erneut versuchen",
+  "recovery": {
+    "heading": "Einen Moment noch",
+    "messages": {
+      "snags": "Ein paar Stolpersteine unterwegs—diesmal dauert es etwas länger als sonst.",
+      "hiccup": "Ein kleiner Hänger bremst uns aus. Es kann etwas länger dauern.",
+      "scenicRoute": "Dieses Video nimmt die Panoramaroute. Es dauert etwas länger als sonst.",
+      "bumps": "Der Weg ist gerade etwas holprig. Wir arbeiten uns durch—noch ein wenig Geduld.",
+      "slower": "Heute läuft es etwas langsamer als sonst. Wir bleiben dran."
+    }
+  },
+  "fx": {
+    "title": "Schnitt",
+    "intensity": "Schnittintensität",
+    "intensityHint": "Wie hart der Schnitt einschlägt. Eine Änderung rendert alle Clips neu.",
+    "rendering": "Schnitt wird gerendert…",
+    "queued": "Deine Clips werden neu gerendert. Das kann ein paar Minuten dauern; du kannst die Seite verlassen.",
+    "applied": "Schnitt angewendet",
+    "jobFailed": "Der Schnitt konnte nicht angewendet werden: {message}",
+    "jobErrors": {
+      "WORKER_UNAVAILABLE": "Kein Renderer hat den Auftrag übernommen. Versuch es in ein paar Minuten noch einmal.",
+      "WORKER_STOPPED": "Der Renderer wurde beendet, bevor der Schnitt fertig war.",
+      "CLIP_JOB_TIMEOUT": "Das Rendern hat zu lange gedauert."
+    },
+    "jobInProgress": "Es läuft bereits ein neues Rendern. Deine Clips werden aktualisiert, sobald es fertig ist.",
+    "jobUnreachable": "Wir haben den Kontakt zum Rendern verloren. Es läuft möglicherweise noch.",
+    "jobDenied": "Du hast keinen Zugriff mehr auf diesen Rendervorgang. Melde dich erneut an und lade die Seite neu.",
+    "retry": "Erneut versuchen",
+    "approxTiming": "Dieses Video hatte keine Wort-Zeitmarken, daher folgen Untertitel und Effekte ungefähren Zeiten.",
+    "simplified": "Einige Effekte wurden in diesem Clip vereinfacht."
+  },
+  "sourceRange": "Teil {start}–{end}"
+}

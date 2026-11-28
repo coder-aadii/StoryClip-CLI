@@ -1,0 +1,149 @@
+{
+  "plans": {
+    "pro": {
+      "description": "For creators who clip consistently each month.",
+      "cta": "Upgrade to Pro"
+    },
+    "scale": {
+      "description": "For creators publishing every day.",
+      "cta": "Upgrade to Creator"
+    }
+  },
+  "highlights": {
+    "videos": "{count} videos clipped every month",
+    "youtube": "Videos up to {length} each",
+    "fonts": "Custom fonts, B-roll and caption templates",
+    "priority": "Priority processing",
+    "minutes": "{length} of video every month",
+    "hd": "720p clips",
+    "fullHd": "Full HD 1080p clips",
+    "scheduling": "Auto-post and schedule clips to YouTube and TikTok"
+  },
+  "runtime": {
+    "minutes": "{count} min",
+    "hours": "{count} h",
+    "hoursMinutes": "{hours} h {minutes} min"
+  },
+  "perMonth": "/mo",
+  "videosEach": "{count} videos/mo · up to {length} each",
+  "mostPopular": "Most popular",
+  "currentPlan": "Current plan",
+  "plansLabel": "Plans",
+  "continueWith": "Continue with {name}",
+  "openingCheckout": "Opening secure checkout…",
+  "checkoutError": "We couldn't open checkout. Please try again.",
+  "maybeLater": "Maybe later",
+  "prorated": "You'll confirm the change on Stripe and only pay the prorated difference.",
+  "cancelAnytime": "Cancel anytime · Secure checkout with Stripe",
+  "appStore": "Your subscription is managed through the App Store. You can change plans in the SupoClip iOS app.",
+  "selfHosted": {
+    "title": "Self-hosted",
+    "body": "Run SupoClip on your own computer with no subscription or monthly video limit. Setup required; you provide the hardware and any paid AI services you choose.",
+    "guide": "Self-hosting guide"
+  },
+  "upgrade": {
+    "start": {
+      "eyebrow": "Ready when you are",
+      "title": "Turn long videos into ready-to-post clips",
+      "body": "Choose a hosted plan and we handle the processing, or self-host on your own computer for noncommercial use or as an individual creator."
+    },
+    "limit": {
+      "eyebrow": "What a month",
+      "titleCount": "You've clipped all {count} videos on {plan}",
+      "titleAll": "You've used everything on {plan}",
+      "bodyRefreshKeep": "Your minutes refresh on {date}. Keep the momentum going with {plan}: {length} of video a month. This try didn't use any minutes.",
+      "bodyPeriodKeep": "Your minutes refresh next month. Keep the momentum going with {plan}: {length} of video a month. This try didn't use any minutes.",
+      "bodyRefresh": "Your minutes refresh on {date}. This try didn't use any minutes.",
+      "bodyPeriod": "Your minutes refresh next month. This try didn't use any minutes.",
+      "titleShort": "This video needs {required} minutes, and you have {remaining} left",
+      "titleMinutes": "You've used all {length} on {plan} this month"
+    },
+    "long": {
+      "eyebrow": "A long one",
+      "title": "{plan} can take this {runtime} video",
+      "fallbackPlan": "A bigger plan",
+      "body": "{plan} takes videos up to {length} each. {next} handles up to {nextLength}, so this one goes straight through. This try didn't use any minutes.",
+      "bodyNoNext": "{plan} takes videos up to {length} each. This try didn't use any minutes."
+    },
+    "fonts": {
+      "eyebrow": "Make it yours",
+      "title": "Captions in your brand's own font",
+      "body": "Upload any .ttf or .otf and use it across every clip, so your shorts look like they come from you."
+    },
+    "explore": {
+      "eyebrow": "More room to create",
+      "title": "Do more with {plan}",
+      "titleFallback": "Plans for every creator",
+      "body": "More video each month, Full HD clips, longer sources and priority processing."
+    },
+    "member": {
+      "eyebrow": "Your limit in {team}",
+      "pausedTitle": "Your seat is paused for new videos",
+      "pausedBody": "A team admin paused video generation for your seat. Ask them to turn it back on. This try didn't use any minutes.",
+      "title": "You've used your {limit} minutes for this month",
+      "titleShort": "This video needs {required} minutes, and you have {remaining} left in your limit",
+      "bodyRefresh": "A team admin set your limit to {limit} minutes a month. It resets on {date}, or ask an admin to raise it. This try didn't use any minutes.",
+      "bodyPeriod": "A team admin set your limit to {limit} minutes a month. It resets next month, or ask an admin to raise it. This try didn't use any minutes."
+    },
+    "teamStart": {
+      "title": "{team} needs a Team plan to make clips",
+      "body": "Clips made here use the team's shared hours, so the team needs an active Team plan first."
+    },
+    "agent": {
+      "eyebrow": "Agent · Creator",
+      "title": "Clip, plan and post just by asking",
+      "titleUsed": "That was your last free Agent message",
+      "body": "Agent is part of Creator. Tell it what you want and it makes the clips, books your week and keeps posting, while you get on with your day.",
+      "bodyUsed": "Hope it helped. Agent is part of Creator: keep chatting where you left off, with every conversation kept.",
+      "perks": {
+        "0": "Agent: clips, edits, schedules and posts for you",
+        "1": "A posting calendar it fills and keeps tidy",
+        "2": "Plus everything else in Creator, like Full HD 1080p"
+      }
+    },
+    "preview": {
+      "eyebrow": "Your free clip",
+      "title": "{count, plural, one {Unlock the other clip} other {Unlock the other # clips}}",
+      "body": "They're already found and waiting. Pick a plan and they're made right here, in this project."
+    }
+  },
+  "illustration": {
+    "fitsIn": "fits in {plan}",
+    "yourVideo": "Your video",
+    "today": "Today",
+    "videosUpFrom": "videos a month, up from {count}",
+    "videosWith": "videos a month with {plan}",
+    "sample": "and that's why",
+    "ownFont": "or your own .ttf",
+    "serif": "Serif",
+    "display": "Display",
+    "mono": "Mono",
+    "hoursUpFrom": "hours of video a month, up from {count}",
+    "hoursWith": "hours of video a month with {plan}"
+  },
+  "creatorCode": {
+    "applied": "Creator code <mono>{code}</mono>: 20% off your first 3 months.",
+    "remove": "Remove",
+    "prompt": "Have a creator code?",
+    "placeholder": "Creator code",
+    "apply": "Apply",
+    "invalid": "That code isn't valid."
+  },
+  "minutesEach": "{minutes}/mo · {resolution} · up to {length} each",
+  "perYear": "/yr",
+  "monthlyEquivalent": "${price}/mo",
+  "interval": {
+    "label": "Billing period",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "monthsFree": "{count, plural, one {# month free} other {# months free}}"
+  },
+  "comingSoon": "Coming soon",
+  "teamWorkspaceBody": "{team} uses a pooled Team subscription. Owners can activate the plan or add seats to expand pooled monthly hours.",
+  "manageTeamSeats": "Manage team & seats",
+  "teamAskOwner": "{team} uses a pooled Team subscription. Ask the team owner to start the plan or add seats.",
+  "gallery": {
+    "regionLabel": "Example clips made with SupoClip",
+    "viewAll": "More examples"
+  }
+}

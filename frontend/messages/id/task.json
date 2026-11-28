@@ -1,0 +1,310 @@
+{
+  "errors": {
+    "action": "Aksi tidak bisa diselesaikan. Coba lagi, ya.",
+    "load": "Gagal memuat tugas",
+    "fetchTask": "Gagal mengambil tugas: {status}",
+    "fetchClips": "Gagal mengambil clip: {status}",
+    "updateTitle": "Gagal memperbarui judul",
+    "deleteTask": "Gagal menghapus tugas",
+    "deleteClip": "Gagal menghapus clip",
+    "applySettings": "Gagal menerapkan pengaturan",
+    "deleteFont": "Gagal menghapus font",
+    "exportClip": "Gagal mengekspor clip",
+    "share": "Gagal membuat tautan berbagi",
+    "disableShare": "Gagal menonaktifkan tautan berbagi",
+    "downloadAll": "Tidak dapat mengunduh klip. Silakan coba lagi.",
+    "createTask": "Tidak bisa memulai generasi baru"
+  },
+  "alreadyProcessing": "Video ini sedang diproses.",
+  "toasts": {
+    "settingsApplied": "Pengaturan generasi diterapkan",
+    "cancelled": "Generasi dibatalkan",
+    "retryQueued": "Pembuatan masuk antrean untuk dicoba lagi"
+  },
+  "hooks": {
+    "question": "Hook pertanyaan",
+    "statement": "Pernyataan tegas",
+    "statistic": "Data/statistik",
+    "story": "Hook cerita",
+    "contrast": "Hook kontras",
+    "none": "Tanpa hook",
+    "fallback": "Tidak ada"
+  },
+  "back": "Pustaka",
+  "titleLabel": "Judul generasi",
+  "saveTitle": "Simpan judul",
+  "cancelTitle": "Batalkan edit judul",
+  "editTitle": "Edit judul",
+  "clipsTotal": "{count, plural, one {# clip} other {# clip}} · total {duration}",
+  "outputLength": "Total {duration}",
+  "readOnly": "Tampilan baca-saja dari generasi akun lain.",
+  "cancel": "Batal",
+  "retryGeneration": "Coba pembuatan lagi",
+  "restyle": "Ganti gaya",
+  "creatingLink": "Membuat tautan…",
+  "linkCopied": "Tautan disalin",
+  "originalVideo": "Video asli",
+  "copyShare": "Salin tautan berbagi",
+  "disabling": "Menonaktifkan…",
+  "disableShare": "Nonaktifkan tautan berbagi",
+  "openEditor": "Buka editor",
+  "deleteGeneration": "Hapus generasi",
+  "moreActions": "Tindakan lainnya",
+  "reconnectingOwn": "Menyambung ulang ke pembaruan langsung. Videomu masih diproses.",
+  "reconnectingOther": "Menyambung ulang ke pembaruan langsung. Generasi ini masih diproses.",
+  "cancelledTitle": "Generasi dibatalkan",
+  "cancelledBody": "Coba pembuatan ini lagi saat Anda siap. Klip yang sudah selesai akan tetap disimpan.",
+  "failedTitle": "Pemrosesan gagal",
+  "failedBody": "Pemrosesan gagal. Coba pembuatan lagi. Klip yang sudah selesai akan tetap disimpan.",
+  "failedBodyAgeRestricted": "Video YouTube ini dibatasi usia, jadi kami tidak bisa mengunduhnya. Unduh videonya sendiri lalu unggah filenya. Tidak ada menit yang terpakai.",
+  "failedBodyGeoRestricted": "Video YouTube ini tidak tersedia di wilayah kami, jadi kami tidak bisa mengunduhnya. Unduh videonya sendiri lalu unggah filenya. Tidak ada menit yang terpakai.",
+  "backHome": "Kembali ke beranda",
+  "noClipsTitle": "Tidak ada clip yang dihasilkan",
+  "noClipsBody": "Generasi selesai, tapi tidak ada clip yang dihasilkan. Videonya mungkin tidak punya konten yang cocok untuk di-clip.",
+  "tryAnother": "Coba video lain",
+  "sortLabel": "Urutkan clip",
+  "sort": {
+    "score": "Terbaik dulu",
+    "timeline": "Timeline"
+  },
+  "downloadAs": "Unduh sebagai",
+  "downloadFormat": "Format unduhan",
+  "downloadAll": "Unduh semua",
+  "downloadAllHint": "Unduh semua klip sebagai ZIP berisi file asli",
+  "preparingDownload": "Menyiapkan…",
+  "original": "Asli",
+  "settingsTitle": "Pengaturan generasi",
+  "settingsBody": "Atur font, caption, dan pembersihan untuk clip generasi ini.",
+  "font": "Font",
+  "templateDefault": "Bawaan template",
+  "color": "Warna",
+  "captionTemplate": "Template caption",
+  "selectStyle": "Pilih gaya",
+  "defaultTemplate": "Bawaan",
+  "brollTitle": "B-roll",
+  "brollBody": "Tambahkan stok video saat pembicara menyebut sesuatu yang bisa ditampilkan. Saat diterapkan, B-roll yang ada tetap dan klip tanpa B-roll diisi; jika dimatikan, B-roll dihapus.",
+  "cleanupTitle": "Pembersihan clip",
+  "cleanupBody": "Terapkan potongan keheningan dan kata pengisi ke clip yang dibuat ulang.",
+  "shortenPauses": "Perpendek jeda panjang",
+  "pauseThreshold": "Ambang jeda (md)",
+  "removeFillers": "Hapus kata pengisi",
+  "extraWords": "Kata atau frasa tambahan yang disaring",
+  "extraWordsPlaceholder": "intinya, jujur saja, sebenarnya",
+  "applying": "Menerapkan...",
+  "apply": "Terapkan ke semua clip",
+  "deleteFontTitle": "Hapus font?",
+  "deleteFontBody": "Hapus {name}? Ini tidak bisa dibatalkan.",
+  "keepFont": "Simpan font",
+  "deleteFont": "Hapus font",
+  "deleteGenerationTitle": "Hapus generasi",
+  "deleteGenerationBody": "Yakin ingin menghapus generasi ini? Semua clip akan terhapus permanen dan tidak bisa dibatalkan.",
+  "deleting": "Menghapus...",
+  "delete": "Hapus",
+  "deleteClipTitle": "Hapus clip",
+  "deleteClipBody": "Yakin ingin menghapus clip ini? Tindakan ini tidak bisa dibatalkan.",
+  "clipNumber": "Clip {order}",
+  "topPick": "Pilihan utama",
+  "preview": "Pratinjau {title}",
+  "downloadNamed": "Unduh {title}",
+  "download": "Unduh",
+  "edit": "Ubah",
+  "deleteClip": "Hapus clip",
+  "position": "Clip {current} dari {total}",
+  "previous": "Clip sebelumnya",
+  "next": "Clip berikutnya",
+  "virality": "Skor viral",
+  "relevanceWithHook": "{hook} · relevansi {percent}%",
+  "relevance": "relevansi {percent}%",
+  "scores": {
+    "hook": "Hook",
+    "engagement": "Engagement",
+    "value": "Nilai",
+    "shareability": "Kelayakan dibagikan"
+  },
+  "openInEditor": "Buka di editor",
+  "steps": {
+    "fetching": "Mengambil video",
+    "transcribing": "Mentranskripsi",
+    "finding": "Mencari momen",
+    "rendering": "Merender clip"
+  },
+  "eta": {
+    "queued": "Menunggu worker",
+    "estimating": "Memperkirakan sisa waktu…",
+    "stillDownloading": "Video Anda masih diunduh…",
+    "minuteRange": "Sekitar {low}–{high} menit lagi",
+    "underMinute": "Kurang dari satu menit lagi",
+    "minutes": "Sekitar {count} menit lagi"
+  },
+  "clipOf": "Clip {current} dari {total}",
+  "leavePage": "Kamu boleh meninggalkan halaman ini — clip-mu akan menunggu di pustaka.",
+  "sourceLength": "Video sumber {duration}",
+  "percentComplete": "{progress}% selesai",
+  "transcript": {
+    "heading": "Transkrip",
+    "seeMore": "Lihat selengkapnya",
+    "full": "Transkrip lengkap",
+    "forTitle": "Transkrip untuk {title}",
+    "complete": "Transkrip lengkap untuk clip ini"
+  },
+  "workflowBadge": {
+    "series": "Seri · {count, plural, one {# bagian} other {# bagian}}",
+    "topic": "Topik: {topic}",
+    "recap": "Ringkasan",
+    "trailer": "Trailer",
+    "seriesPending": "Seri"
+  },
+  "partOf": "Bagian {n} dari {total}",
+  "partLabel": "Bagian {n}",
+  "endsOn": "Berakhir di: {text}",
+  "postCaption": "Caption postingan",
+  "copyCaption": "Salin caption",
+  "captionCopied": "Caption disalin",
+  "downloadAllParts": "Unduh semua bagian",
+  "downloadAllPartsHint": "Unduh semua bagian sebagai ZIP berisi file asli, bernomor sesuai urutan",
+  "incompleteSeries": "Berhenti di bagian {done} dari {total}. Coba lagi untuk menyelesaikan serinya.",
+  "coversPoints": "{count, plural, one {Mencakup # poin} other {Mencakup # poin}}",
+  "pointKinds": {
+    "opener": "Pembuka",
+    "closer": "Kesimpulan"
+  },
+  "beatsTitle": "Alur",
+  "beatRoles": {
+    "cold_open": "Hook",
+    "context": "Konteks",
+    "escalation": "Ketegangan",
+    "button": "Penutup"
+  },
+  "sourceMoment": "Dari {time} di video asli",
+  "sourceMoments": "Momen di video asli",
+  "playFrom": "Putar dari {time}",
+  "topicHeader": "Tentang {topic} · {count, plural, one {# momen} other {# momen}}",
+  "instructionsUsed": "Instruksi",
+  "stepsByWorkflow": {
+    "series": {
+      "finding": "Memetakan cerita",
+      "rendering": "Memotong bagian"
+    },
+    "topic": {
+      "finding": "Mencari momen tentang topikmu",
+      "rendering": "Merender clip"
+    },
+    "recap": {
+      "finding": "Memilih poin utama",
+      "rendering": "Mengedit rangkumanmu"
+    },
+    "trailer": {
+      "finding": "Menulis trailer",
+      "rendering": "Mengedit trailermu"
+    }
+  },
+  "workflowNotes": {
+    "PART_COUNT_REDUCED": "Kamu meminta {requested} bagian. Video ini cukup untuk {actual}.",
+    "STORY_ARC_SELECTED": "Dibuat dari alur cerita terkuat ({start}–{end}). Tambahkan instruksi untuk memilih alur lain.",
+    "CHAPTERS_LEFT_OUT": "Dilewati agar muat: {chapters}. Tambahkan instruksi untuk mengubah bagian yang dipertahankan.",
+    "NO_SINGLE_STORY": "Video ini tidak punya satu cerita yang utuh. Seri ini mengikuti alur terpanjang yang saling terhubung.",
+    "TOPIC_THIN": "Hanya {count, plural, one {# momen} other {# momen}} yang benar-benar membahas topik ini.",
+    "TOPIC_BROADENED": "\"{topic}\" terlalu luas untuk video ini, jadi kami mengartikannya sebagai: {interpretation}",
+    "TARGET_SHORTENED": "Videonya pendek, jadi rangkumannya juga lebih pendek.",
+    "COARSE_TRANSCRIPT": "Transkrip ini tidak punya waktu per kata, jadi potongannya kurang presisi.",
+    "SPONSOR_SKIPPED": "Kami melewatkan bagian sponsor.",
+    "COLD_OPEN_SKIPPED": "Tidak ada kalimat yang cukup kuat untuk cold open, jadi Bagian 1 dimulai dari awal."
+  },
+  "workflowErrors": {
+    "topic_not_found": {
+      "title": "“{topic}” hampir tidak dibahas di video ini",
+      "body": "Kami hanya menemukan sebutan sekilas, bukan momen utuh. Menit kamu sudah dikembalikan.",
+      "suggestionsLabel": "Video ini paling banyak membahas:",
+      "mentions": "Disebut sekilas di {times}.",
+      "cta": "Buat highlight saja"
+    },
+    "source_too_short": {
+      "series": {
+        "title": "Video ini terlalu pendek untuk dijadikan seri",
+        "body": "Seri butuh cerita yang cukup untuk minimal dua bagian. Menit kamu sudah dikembalikan."
+      },
+      "topic": {
+        "title": "Video ini terlalu pendek untuk pencarian topik",
+        "body": "Pencarian topik cocok untuk video lebih dari satu menit. Menit kamu sudah dikembalikan."
+      },
+      "recap": {
+        "title": "Video ini terlalu pendek untuk dijadikan ringkasan",
+        "body": "Ringkasan cocok untuk video lebih dari 3 menit. Menit kamu sudah dikembalikan."
+      },
+      "trailer": {
+        "title": "Video ini terlalu pendek untuk dijadikan trailer",
+        "body": "Trailer cocok untuk video lebih dari 3 menit. Menit kamu sudah dikembalikan."
+      },
+      "cta": "Buat highlight saja"
+    },
+    "no_story": {
+      "title": "Kami tidak menemukan cerita untuk dibagi menjadi beberapa bagian",
+      "body": "Video ini tidak punya alur cerita yang cukup panjang. Menit kamu sudah dikembalikan.",
+      "cta": "Buat rangkuman saja"
+    },
+    "recap_unsupported": {
+      "title": "Poin yang berbeda tidak cukup untuk rangkuman",
+      "body": "Menit kamu sudah dikembalikan.",
+      "cta": "Buat highlight saja"
+    },
+    "trailer_unbuildable": {
+      "title": "Kami tidak bisa membuat trailer tanpa membocorkan akhirnya",
+      "body": "Menit kamu sudah dikembalikan.",
+      "cta": "Buat rangkuman saja"
+    },
+    "analysis_incomplete": {
+      "title": "Kami tidak bisa membaca seluruh video",
+      "body": "Sebagian analisis gagal. Menit kamu sudah dikembalikan.",
+      "cta": "Coba lagi"
+    },
+    "plan_failed": {
+      "title": "Editor AI tidak bisa menyelesaikan rencana ini",
+      "body": "Menit kamu sudah dikembalikan.",
+      "cta": "Coba lagi"
+    },
+    "render_incomplete": {
+      "title": "Sebagian video tidak bisa dirender",
+      "body": "Menit kamu sudah dikembalikan.",
+      "cta": "Coba lagi"
+    },
+    "transcript_untimed": {
+      "title": "Transkrip ini tidak punya penanda waktu",
+      "body": "Kami butuh penanda waktu untuk memotong dengan presisi. Unggah filenya saja.",
+      "cta": "Kembali ke beranda"
+    },
+    "highlightsInstead": "Buat highlight saja"
+  },
+  "clipLoadFailed": "Clip ini tidak bisa dimuat.",
+  "retryPlayback": "Coba putar lagi",
+  "recovery": {
+    "heading": "Tunggu sebentar lagi",
+    "messages": {
+      "snags": "Ada beberapa kendala kecil, jadi prosesnya sedikit lebih lama dari biasanya.",
+      "hiccup": "Ada sedikit hambatan yang memperlambat proses. Mungkin perlu waktu sedikit lebih lama.",
+      "scenicRoute": "Video ini memilih jalan memutar yang indah. Prosesnya sedikit lebih lama dari biasanya.",
+      "bumps": "Ada beberapa rintangan di perjalanan. Sedang kami atasi—butuh sedikit waktu lagi.",
+      "slower": "Prosesnya sedikit lebih lambat dari biasanya. Kami masih mengerjakannya."
+    }
+  },
+  "fx": {
+    "title": "Editan",
+    "intensity": "Intensitas editan",
+    "intensityHint": "Seberapa keras editan menghantam. Mengubahnya merender ulang semua klip.",
+    "rendering": "Merender editan…",
+    "queued": "Merender ulang klipmu. Ini bisa makan beberapa menit; kamu boleh meninggalkan halaman ini.",
+    "applied": "Editan diterapkan",
+    "jobFailed": "Editan tidak bisa diterapkan: {message}",
+    "jobErrors": {
+      "WORKER_UNAVAILABLE": "tidak ada perender yang mengambil pekerjaan ini. Coba lagi beberapa menit lagi.",
+      "WORKER_STOPPED": "perender berhenti sebelum editan selesai.",
+      "CLIP_JOB_TIMEOUT": "proses render terlalu lama."
+    },
+    "jobInProgress": "Render ulang sudah berjalan. Klip kamu akan diperbarui setelah selesai.",
+    "jobUnreachable": "Kami kehilangan kontak dengan proses render. Mungkin masih berjalan.",
+    "jobDenied": "Kamu tidak lagi punya akses ke proses render ini. Masuk lagi lalu muat ulang halaman.",
+    "retry": "Coba lagi",
+    "approxTiming": "Video ini tidak punya waktu per kata, jadi teks dan efek mengikuti waktu perkiraan.",
+    "simplified": "Beberapa efek disederhanakan untuk klip ini."
+  },
+  "sourceRange": "Bagian {start}–{end}"
+}

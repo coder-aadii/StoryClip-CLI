@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "title": "SupoClip Creator-Programm: {percent} % Provision für {months} Monate",
+    "description": "Mach Videos über SupoClip und verdiene {percent} % von dem, was deine Zuschauer in ihren ersten {months} Monaten zahlen, per Stripe direkt auf dein Bankkonto. Deine Zuschauer bekommen 20 % Rabatt auf ihre ersten 3 Monate."
+  },
+  "badge": "Creator-Programm",
+  "nav": {
+    "label": "Hauptnavigation",
+    "demo": "Demo",
+    "apply": "Bewerben"
+  },
+  "hero": {
+    "title": "Mach Videos über SupoClip. Verdiene {percent} % für {months} Monate.",
+    "body": "Du postest Shorts, Reels oder TikToks über Clipping, Podcasts oder Creator-Tools? Hol dir deinen eigenen Code. Deine Zuschauer sparen 20 %, du verdienst {percent} % von dem, was sie in ihren ersten {months} Monaten zahlen, und bekommst SupoClip Pro kostenlos, solange du im Programm bist.",
+    "apply": "Jetzt bewerben",
+    "noMinimum": "Keine Mindestzahl an Followern."
+  },
+  "video": {
+    "name": "So funktioniert das SupoClip-Creator-Programm",
+    "description": "Bewirb dich, wähl deinen Code, und dein Publikum bekommt 20% auf die ersten 3 Monate. Freigegebene Creator bekommen SupoClip Pro kostenlos.",
+    "aria": "Erklärung zum Creator-Programm: Bewirb dich, wähl deinen Code, und dein Publikum bekommt 20% auf die ersten 3 Monate"
+  },
+  "offer": {
+    "heading": "Was alle bekommen",
+    "earnTitle": "Du verdienst {percent} % für {months} Monate",
+    "earnDetail": "Von jeder Zahlung der Leute, die mit deinem Code abonnieren, in ihren ersten {months} Monaten. Das sind etwa ${pro} pro Pro-Abonnent und ${creator} pro Creator-Abonnent. Für Creator in den USA, Großbritannien, Kanada, der Schweiz und Europa.",
+    "youTitle": "Du bekommst SupoClip Pro, kostenlos",
+    "youDetail": "Pro kostet normalerweise ${price}/Monat und enthält {limit} Stunden Video pro Monat. Freigeschaltete Creator erhalten es kostenlos, solange sie im Programm sind.",
+    "youDetailNoLimit": "Pro kostet normalerweise ${price}/Monat. Freigegebene Creator bekommen es kostenlos, solange sie im Programm sind.",
+    "audienceTitle": "Dein Publikum bekommt 20% Rabatt",
+    "audienceDetail": "Für die ersten 3 Monate, auf jedem Tarif. Es funktioniert über deinen Link oder indem jemand deinen Code an der Kasse eingibt."
+  },
+  "how": {
+    "heading": "So funktioniert’s"
+  },
+  "steps": {
+    "apply": {
+      "title": "Bewerben",
+      "detail": "Sag uns, wo du postest, und wähl deinen Code, zum Beispiel MAYA. Das dauert zwei Minuten."
+    },
+    "review": {
+      "title": "Wir prüfen",
+      "detail": "Jede Bewerbung wird von Hand geprüft. Du bekommst so oder so eine E-Mail."
+    },
+    "share": {
+      "title": "Teilen",
+      "detail": "Pack deinen Link in deine Bio oder nenn deinen Code in deinen Videos. Jede Zahlung deiner Zuschauer bringt dir {months} Monate lang {percent} %."
+    },
+    "paid": {
+      "title": "Geld bekommen",
+      "detail": "Verbinde einmal Stripe. Die Provision geht jeden Monat auf dein Bankkonto, {days} Tage nach jeder Zahlung."
+    }
+  },
+  "rules": {
+    "heading": "Die Regeln",
+    "sponsored": "Kennzeichne gesponserte Posts, zum Beispiel mit #ad.",
+    "ads": "Schalt keine Anzeigen auf den Namen SupoClip und poste deinen Code nicht auf Coupon- oder Deal-Seiten.",
+    "ownCode": "Nutze nicht deinen eigenen Code.",
+    "incentive": "Bezahl oder belohn niemanden dafür, sich mit deinem Code anzumelden.",
+    "end": "Wir können das Programm beenden oder einen Creator jederzeit entfernen."
+  },
+  "faq": {
+    "heading": "Fragen",
+    "earn": {
+      "question": "Wie viel verdiene ich?",
+      "answer": "{percent} % von dem, was jeder Kunde, der deinen Link oder Code genutzt hat, im Web zahlt, in seinen ersten {months} Monaten, ohne Steuern. Ein Pro-Abonnent bringt dir in dieser Zeit etwa ${pro}, ein Creator-Abonnent etwa ${creator}. Jahrespläne zählen einmal. Erstattete oder zurückgebuchte Zahlungen bringen keine Provision."
+    },
+    "payout": {
+      "question": "Wie werde ich bezahlt?",
+      "answer": "Über Stripe, direkt auf dein Bankkonto. Du richtest das einmal auf deiner Creator-Seite ein: Stripe fragt nach Name, Adresse, Geburtsdatum und Bankverbindung. Die Provision ist {days} Tage nach jeder Zahlung verfügbar und wird monatlich ausgezahlt, sobald du ${minimum} oder mehr hast. Auszahlungen gibt es in den USA, Großbritannien, Kanada, der Schweiz und Europa."
+    },
+    "where": {
+      "question": "Kann ich dort, wo ich wohne, Provision verdienen?",
+      "answer": "Provision gibt es für Creator, die in den USA, Großbritannien, Kanada, der Schweiz oder Europa wohnen, weil Stripe sie nur dorthin auszahlen kann. Creator anderswo können trotzdem mitmachen: Du bekommst SupoClip Pro kostenlos und einen Code, mit dem deine Zuschauer 20 % sparen."
+    },
+    "iphone": {
+      "question": "Zählen Abos auf dem iPhone?",
+      "answer": "Noch nicht. Deine Zuschauer bekommen den Rabatt mit deinem Code auch auf dem iPhone, aber Provision gibt es für Abos, die im Web abgeschlossen werden."
+    },
+    "followers": {
+      "question": "Gibt es eine Mindestzahl an Followern?",
+      "answer": "Nein. Wir schauen darauf, was du postest, nicht nur darauf, wie viele Leute dir folgen. Kleine Creator, die schon Videos über SupoClip machen, passen sehr gut."
+    },
+    "audience": {
+      "question": "Was bekommt mein Publikum?",
+      "answer": "Wer sich über deinen Link anmeldet oder deinen Code an der Kasse eingibt, bekommt 20% auf die ersten 3 Monate. Im Web gilt das für jeden Tarif. Auf dem iPhone gilt es für Pro: Leute tippen in der App auf „Hast du einen Creator-Code?“ oder öffnen deinen iPhone-Link."
+    },
+    "code": {
+      "question": "Kann ich meinen eigenen Code wählen?",
+      "answer": "Ja. Codes haben 3 bis 20 Buchstaben, Zahlen oder Bindestriche, und jeder gehört nur einem Creator. Das Formular sagt dir sofort, ob deiner frei ist."
+    },
+    "declined": {
+      "question": "Was passiert, wenn meine Bewerbung abgelehnt wird?",
+      "answer": "Du bekommst eine E-Mail, mit einer Notiz von uns, wenn es etwas Konkretes gibt. Du kannst dich nach 30 Tagen erneut bewerben."
+    },
+    "account": {
+      "question": "Brauche ich ein SupoClip-Konto?",
+      "answer": "Ja. Das Programm hängt an deinem Konto, also erstellst du vorher ein kostenloses (oder meldest dich an)."
+    }
+  },
+  "cta": {
+    "title": "Postest du schon über SupoClip?",
+    "body": "Bewirb dich mit einem Link zu deinem Profil und wähl deinen Code. Wenn du schon ein Video über SupoClip gemacht hast, füg es hinzu."
+  }
+}

@@ -1,0 +1,345 @@
+"use client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiRequestError, parseApiError } from "@/lib/api-error";
+import { remapCaptionTransforms, type EditDocument, type EditorState } from "@/lib/editor/document";
+import { draftCacheKey, readDraft, removeDraft, writeDraft } from "@/lib/editor/draft-cache";
+
+export async function editorRequest<T>(
+  url: string,
+  method = "GET",
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(url, {
+    method,
+    cache: "no-store",
+    ...(signal ? { signal } : {}),
+    ...(body === undefined
+      ? {}
+      : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+  });
+  if (!response.ok)
+    throw new ApiRequestError(await parseApiError(response, "Could not update the editor."));
+  return response.json();
+}
+interface History {
+  past: EditDocument[];
+  present: EditDocument;
+  future: EditDocument[];
+}
+
+function upgradeCachedHistory(history: History, server: EditDocument): History {
+  const upgrade = (document: EditDocument): EditDocument => withFx({
+    ...server,
+    ...document,
+    // Missing means this cache predates editable B-roll; [] is an intentional removal.
+    broll: structuredClone(document.broll ?? server.broll ?? []),
+    ...(document.hookTiming !== undefined || server.hookTiming !== undefined
+      ? { hookTiming: structuredClone(document.hookTiming ?? null) } : {}),
+    // Missing placement fields mean the original layout, including in old undo
+    // snapshots. Inheriting today's server placement would corrupt undo.
+    ...(document.textTransforms !== undefined || server.textTransforms !== undefined
+      ? { textTransforms: structuredClone(document.textTransforms ?? {}) } : {}),
+    ...(document.captionTransforms !== undefined || server.captionTransforms !== undefined
+      ? { captionTransforms: Object.fromEntries(Object.entries(document.captionTransforms ?? {}).map(([key, value]) => [key, { ...value, size: value.size ?? null }])) } : {}),
+  });
+  // Dynamic edits: a cached draft without `fx` predates them, and null means absent (the server reads both alike and
+  // seeds the clip's edits), so both take the server's. "Removed" is an inert DocFx, never null. Null is never kept.
+  const withFx = (document: EditDocument): EditDocument => {
+    const { fx, ...rest } = document;
+    const value = fx ?? server.fx;
+    return value ? { ...rest, fx: structuredClone(value) } : rest;
+  };
+  return {
+    past: history.past.map(upgrade),
+    present: upgrade(history.present),
+    future: history.future.map(upgrade),
+  };
+}
+export function useEditor(endpoint: string) {
+  const [asset, setAsset] = useState<EditorState | null>(null);
+  const [history, setHistory] = useState<History | null>(null);
+  const [status, setStatus] = useState("Preparing preview…");
+  const [error, setError] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState(false);
+  const historyRef = useRef<History | null>(null);
+  const assetRef = useRef<EditorState | null>(null);
+  const revision = useRef(0),
+    saved = useRef("");
+  const inFlight = useRef<Promise<void> | null>(null);
+  const mounted = useRef(true);
+  const cacheKey = draftCacheKey(endpoint);
+  const lastEdit = useRef({ group: "", at: 0 });
+  const [generation, setGeneration] = useState(0);
+  // A bounded browser copy: unsaved edits, plus a short undo history across reloads.
+  const cache = useCallback(
+    (value: History) => {
+      const basis = assetRef.current?.basis;
+      const unsaved = JSON.stringify(value.present) !== saved.current;
+      const stored = !!basis && writeDraft(cacheKey, basis, revision.current, value, unsaved);
+      // Failing to keep undo history for a saved draft is not worth a warning.
+      setStorageError(!stored && unsaved);
+    },
+    [cacheKey],
+  );
+  const publish = useCallback(
+    (next: History) => {
+      historyRef.current = next;
+      setHistory(next);
+      cache(next);
+      const isSaved = JSON.stringify(next.present) === saved.current;
+      setStatus(isSaved ? "All changes saved" : "Unsaved changes");
+      if (isSaved) setError(null);
+    },
+    [cache],
+  );
+  const update = useCallback(
+    (change: (doc: EditDocument) => EditDocument, group = "") => {
+      const current = historyRef.current;
+      if (!current) return;
+      const changed = change(current.present);
+      const next = changed.words !== current.present.words || changed.captions.wordsPerLine !== current.present.captions.wordsPerLine
+        ? remapCaptionTransforms(current.present, changed) : changed;
+      if (JSON.stringify(next) === JSON.stringify(current.present)) return;
+      const coalesce =
+        group &&
+        lastEdit.current.group === group &&
+        (group.startsWith("gesture:") || Date.now() - lastEdit.current.at < 700);
+      publish({
+        past: coalesce
+          ? current.past
+          : [...current.past, current.present].slice(-50),
+        present: next,
+        future: [],
+      });
+      lastEdit.current = { group, at: Date.now() };
+    },
+    [publish],
+  );
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    if (h?.past.length)
+      publish({
+        past: h.past.slice(0, -1),
+        present: h.past[h.past.length - 1],
+        future: [h.present, ...h.future],
+      });
+    lastEdit.current.group = "";
+  }, [publish]);
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    if (h?.future.length)
+      publish({
+        past: [...h.past, h.present],
+        present: h.future[0],
+        future: h.future.slice(1),
+      });
+    lastEdit.current.group = "";
+  }, [publish]);
+  const save = useCallback(async () => {
+    // All callers drain the same serialized queue, including edits made during a save.
+    for (;;) {
+      while (inFlight.current) await inFlight.current;
+      const h = historyRef.current,
+        a = assetRef.current;
+      if (!h || !a || JSON.stringify(h.present) === saved.current) return;
+      const document = h.present;
+      setStatus("Saving…");
+      const operation = (async () => {
+        try {
+          const result = await editorRequest<{ revision: number }>(
+            endpoint,
+            "PATCH",
+            { basis: a.basis, revision: revision.current, document },
+          );
+          revision.current = result.revision;
+          saved.current = JSON.stringify(document);
+          if (mounted.current) {
+            setError(null);
+            setStatus(
+              JSON.stringify(historyRef.current?.present) === saved.current
+                ? "All changes saved"
+                : "Unsaved changes",
+            );
+            if (historyRef.current) cache(historyRef.current);
+          }
+        } catch (e) {
+          if (mounted.current) {
+            setError(e instanceof Error ? e.message : "Could not save draft");
+            setStatus("Save failed · draft kept locally");
+          }
+          throw e;
+        }
+      })();
+      inFlight.current = operation;
+      try {
+        await operation;
+      } finally {
+        if (inFlight.current === operation) inFlight.current = null;
+      }
+    }
+  }, [cache, endpoint]);
+  useEffect(() => {
+    mounted.current = true;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function load() {
+      try {
+        const state = await editorRequest<EditorState>(endpoint);
+        if (stopped) return;
+        setAsset(state);
+        if (state.status === "unprepared") {
+          await editorRequest(`${endpoint}/prepare`, "POST");
+          if (!stopped) timer = setTimeout(load, 1500);
+          return;
+        }
+        if (state.status === "preparing") {
+          timer = setTimeout(load, 1500);
+          return;
+        }
+        if (state.status === "failed") {
+          setError(state.error || "Preview preparation failed");
+          return;
+        }
+        assetRef.current = state;
+        revision.current = state.draft.revision;
+        saved.current = JSON.stringify(state.draft.document);
+        let h: History = {
+          past: [],
+          present: state.draft.document,
+          future: [],
+        };
+        let conflict = false;
+        try {
+          const local = readDraft(cacheKey);
+          if (
+            local?.basis === state.basis &&
+            local.history.present?.version === 1
+          ) {
+            const restored = upgradeCachedHistory(local.history, state.draft.document);
+            if (
+              local.revision === state.draft.revision ||
+              JSON.stringify(restored.present) === saved.current
+            )
+              h = restored;
+            else if (local.unsaved) {
+              h = restored;
+              conflict = true;
+              revision.current = local.revision;
+              setError(
+                "A newer draft exists on the server. Your local changes are retained. Download a draft backup, then reload the saved version to resolve the conflict.",
+              );
+            }
+          }
+        } catch {
+          /* An unreadable local cache never prevents server recovery. */
+        }
+        // Rewrite the copy in the bounded format (older releases kept 50 steps).
+        if (!conflict) {
+          const unsaved = JSON.stringify(h.present) !== saved.current;
+          if (!writeDraft(cacheKey, state.basis, revision.current, h, unsaved) && unsaved) setStorageError(true);
+        }
+        historyRef.current = h;
+        setHistory(h);
+        setStatus(
+          JSON.stringify(h.present) === saved.current
+            ? "All changes saved"
+            : "Recovered local draft",
+        );
+      } catch (e) {
+        if (!stopped)
+          setError(e instanceof Error ? e.message : "Could not load editor");
+      }
+    }
+    void load();
+    return () => {
+      stopped = true;
+      mounted.current = false;
+      clearTimeout(timer);
+    };
+  }, [cacheKey, endpoint, generation]);
+  useEffect(() => {
+    if (!history || error) return;
+    const timer = setTimeout(() => void save().catch(() => {}), 700);
+    return () => clearTimeout(timer);
+  }, [history, save, error]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (
+        historyRef.current &&
+        JSON.stringify(historyRef.current.present) !== saved.current
+      )
+        event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+  const reload = async () => {
+    if (inFlight.current) await inFlight.current.catch(() => {});
+    const state = await editorRequest<EditorState>(endpoint);
+    if (state.status !== "ready") throw new Error("Preview is not ready");
+    revision.current = state.draft.revision;
+    saved.current = JSON.stringify(state.draft.document);
+    assetRef.current = state;
+    setAsset(state);
+    const h = { past: [], present: state.draft.document, future: [] };
+    historyRef.current = h;
+    setHistory(h);
+    cache(h);
+    setError(null);
+    setStatus("All changes saved");
+  };
+  /**
+   * Re-read the session's media facts (face track, matte, analysis state) after a job on the server changed them,
+   * e.g. "Analyse face". The draft, its history and its revision are left alone; a session that was rebuilt
+   * meanwhile (another basis) is not adopted, so a save never lands on a basis the draft was not made for.
+   */
+  const refreshAsset = useCallback(async () => {
+    const current = assetRef.current;
+    if (!current) return false;
+    const state = await editorRequest<EditorState>(endpoint);
+    if (state.status !== "ready" || state.basis !== current.basis || assetRef.current !== current) return false;
+    const next = { ...state, draft: current.draft };
+    assetRef.current = next;
+    if (mounted.current) setAsset(next);
+    return true;
+  }, [endpoint]);
+  /**
+   * Prepare the clip's editing copy again from the original video and start
+   * a fresh draft. The server keeps the replaced draft as a backup; the
+   * caller explains that before calling this.
+   */
+  const rebuild = async () => {
+    if (inFlight.current) await inFlight.current.catch(() => {});
+    await editorRequest(`${endpoint}/rebuild`, "POST", { revision: revision.current });
+    removeDraft(cacheKey);
+    historyRef.current = null;
+    assetRef.current = null;
+    saved.current = "";
+    setHistory(null);
+    setAsset(null);
+    setError(null);
+    setStorageError(false);
+    setStatus("Preparing preview…");
+    setGeneration((value) => value + 1);
+  };
+  return {
+    asset,
+    document: history?.present ?? null,
+    update,
+    undo,
+    redo,
+    canUndo: !!history?.past.length,
+    canRedo: !!history?.future.length,
+    save,
+    reload,
+    refreshAsset,
+    rebuild,
+    status,
+    error,
+    storageError,
+  };
+}

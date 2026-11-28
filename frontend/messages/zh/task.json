@@ -1,0 +1,310 @@
+{
+  "errors": {
+    "action": "无法完成此操作。请再试一次。",
+    "load": "无法加载任务",
+    "fetchTask": "无法获取任务：{status}",
+    "fetchClips": "无法获取片段：{status}",
+    "updateTitle": "无法更新标题",
+    "deleteTask": "无法删除任务",
+    "deleteClip": "无法删除片段",
+    "applySettings": "无法应用设置",
+    "deleteFont": "无法删除字体",
+    "exportClip": "无法导出片段",
+    "share": "无法创建分享链接",
+    "disableShare": "无法停用分享链接",
+    "downloadAll": "无法下载片段，请重试。",
+    "createTask": "无法开始新的生成"
+  },
+  "alreadyProcessing": "这个视频正在处理。",
+  "toasts": {
+    "settingsApplied": "已应用生成设置",
+    "cancelled": "已取消生成",
+    "retryQueued": "已将生成任务加入重试队列"
+  },
+  "hooks": {
+    "question": "提问钩子",
+    "statement": "有力陈述",
+    "statistic": "数据/统计",
+    "story": "故事钩子",
+    "contrast": "对比钩子",
+    "none": "无钩子",
+    "fallback": "无"
+  },
+  "back": "资料库",
+  "titleLabel": "生成标题",
+  "saveTitle": "保存标题",
+  "cancelTitle": "取消编辑标题",
+  "editTitle": "编辑标题",
+  "clipsTotal": "{count, plural, one {# 个片段} other {# 个片段}} · 共 {duration}",
+  "outputLength": "共 {duration}",
+  "readOnly": "这是另一个账号生成内容的只读视图。",
+  "cancel": "取消",
+  "retryGeneration": "重试生成",
+  "restyle": "重新设置样式",
+  "creatingLink": "正在创建链接…",
+  "linkCopied": "链接已复制",
+  "originalVideo": "原视频",
+  "copyShare": "复制分享链接",
+  "disabling": "正在停用…",
+  "disableShare": "停用分享链接",
+  "openEditor": "打开编辑器",
+  "deleteGeneration": "删除生成",
+  "moreActions": "更多操作",
+  "reconnectingOwn": "正在重新连接实时更新。你的视频仍在处理。",
+  "reconnectingOther": "正在重新连接实时更新。这次生成仍在处理。",
+  "cancelledTitle": "生成已取消",
+  "cancelledBody": "准备好后可重试此生成任务。已完成的片段将保留。",
+  "failedTitle": "处理失败",
+  "failedBody": "处理失败。请重试生成。已完成的片段将保留。",
+  "failedBodyAgeRestricted": "此 YouTube 视频有年龄限制，我们无法下载。请自行下载视频后上传文件。未消耗任何分钟数。",
+  "failedBodyGeoRestricted": "此 YouTube 视频在我们所在地区不可用，我们无法下载。请自行下载视频后上传文件。未消耗任何分钟数。",
+  "backHome": "返回首页",
+  "noClipsTitle": "没有生成片段",
+  "noClipsBody": "生成已完成，但没有产出片段。这段视频可能没有适合剪辑的内容。",
+  "tryAnother": "换一个视频",
+  "sortLabel": "片段排序",
+  "sort": {
+    "score": "最佳优先",
+    "timeline": "时间线"
+  },
+  "downloadAs": "下载为",
+  "downloadFormat": "下载格式",
+  "downloadAll": "全部下载",
+  "downloadAllHint": "将所有片段的原始文件打包为 ZIP 下载",
+  "preparingDownload": "正在准备…",
+  "original": "原始",
+  "settingsTitle": "生成设置",
+  "settingsBody": "为这次生成的片段设置字体、字幕和清理选项。",
+  "font": "字体",
+  "templateDefault": "模板默认",
+  "color": "颜色",
+  "captionTemplate": "字幕模板",
+  "selectStyle": "选择样式",
+  "defaultTemplate": "默认",
+  "brollTitle": "B-roll 素材",
+  "brollBody": "在说话者提到可展示的事物时添加素材视频。应用后保留已有 B-roll，并为没有的剪辑补充；关闭则移除。",
+  "cleanupTitle": "片段清理",
+  "cleanupBody": "对重新生成的片段应用静音和填充词剪切。",
+  "shortenPauses": "缩短长停顿",
+  "pauseThreshold": "停顿阈值（毫秒）",
+  "removeFillers": "移除填充词",
+  "extraWords": "额外过滤的词或短语",
+  "extraWordsPlaceholder": "基本上、真的、说实话",
+  "applying": "正在应用...",
+  "apply": "应用到全部片段",
+  "deleteFontTitle": "删除字体？",
+  "deleteFontBody": "删除 {name}？此操作无法撤销。",
+  "keepFont": "保留字体",
+  "deleteFont": "删除字体",
+  "deleteGenerationTitle": "删除生成",
+  "deleteGenerationBody": "确定要删除这次生成吗？所有片段都会被永久删除，且无法撤销。",
+  "deleting": "正在删除...",
+  "delete": "删除",
+  "deleteClipTitle": "删除片段",
+  "deleteClipBody": "确定要删除这个片段吗？此操作无法撤销。",
+  "clipNumber": "片段 {order}",
+  "topPick": "首选",
+  "preview": "预览 {title}",
+  "downloadNamed": "下载 {title}",
+  "download": "下载",
+  "edit": "编辑",
+  "deleteClip": "删除片段",
+  "position": "片段 {current} / {total}",
+  "previous": "上一个片段",
+  "next": "下一个片段",
+  "virality": "传播潜力分数",
+  "relevanceWithHook": "{hook} · {percent}% 相关度",
+  "relevance": "{percent}% 相关度",
+  "scores": {
+    "hook": "钩子",
+    "engagement": "互动",
+    "value": "价值",
+    "shareability": "分享性"
+  },
+  "openInEditor": "在编辑器中打开",
+  "steps": {
+    "fetching": "获取视频",
+    "transcribing": "转录中",
+    "finding": "寻找片段",
+    "rendering": "渲染片段"
+  },
+  "eta": {
+    "queued": "正在等待处理",
+    "estimating": "正在估算剩余时间…",
+    "stillDownloading": "仍在下载视频…",
+    "minuteRange": "大约还需 {low}–{high} 分钟",
+    "underMinute": "不到一分钟",
+    "minutes": "大约还需 {count} 分钟"
+  },
+  "clipOf": "第 {current} / {total} 个片段",
+  "leavePage": "可以离开此页面——片段完成后会保存在你的素材库中。",
+  "sourceLength": "源视频 {duration}",
+  "percentComplete": "已完成 {progress}%",
+  "transcript": {
+    "heading": "文稿",
+    "seeMore": "查看更多",
+    "full": "完整文稿",
+    "forTitle": "{title} 的文稿",
+    "complete": "此片段的完整文稿"
+  },
+  "workflowBadge": {
+    "series": "系列 · {count, plural, one {# 集} other {# 集}}",
+    "topic": "话题：{topic}",
+    "recap": "回顾",
+    "trailer": "预告",
+    "seriesPending": "系列"
+  },
+  "partOf": "第 {n} 集，共 {total} 集",
+  "partLabel": "第 {n} 集",
+  "endsOn": "结尾：{text}",
+  "postCaption": "发布文案",
+  "copyCaption": "复制文案",
+  "captionCopied": "文案已复制",
+  "downloadAllParts": "下载全部分集",
+  "downloadAllPartsHint": "将所有分集的原始文件按顺序编号打包为 ZIP 下载",
+  "incompleteSeries": "已停在第 {done} 集(共 {total} 集)。重试即可完成这个系列。",
+  "coversPoints": "{count, plural, one {涵盖 # 个要点} other {涵盖 # 个要点}}",
+  "pointKinds": {
+    "opener": "开场",
+    "closer": "总结"
+  },
+  "beatsTitle": "节奏",
+  "beatRoles": {
+    "cold_open": "钩子",
+    "context": "背景",
+    "escalation": "推进",
+    "button": "结尾"
+  },
+  "sourceMoment": "原视频 {time} 处",
+  "sourceMoments": "原视频片段",
+  "playFrom": "从 {time} 播放",
+  "topicHeader": "关于{topic} · {count, plural, one {# 个片段} other {# 个片段}}",
+  "instructionsUsed": "说明",
+  "stepsByWorkflow": {
+    "series": {
+      "finding": "梳理故事线",
+      "rendering": "剪辑分集"
+    },
+    "topic": {
+      "finding": "寻找与你的话题相关的片段",
+      "rendering": "渲染片段"
+    },
+    "recap": {
+      "finding": "挑选要点",
+      "rendering": "剪辑回顾"
+    },
+    "trailer": {
+      "finding": "撰写预告",
+      "rendering": "剪辑预告"
+    }
+  },
+  "workflowNotes": {
+    "PART_COUNT_REDUCED": "你要求 {requested} 集，这个视频只够 {actual} 集。",
+    "STORY_ARC_SELECTED": "基于最精彩的一条故事线（{start}–{end}）制作。添加说明即可换一条。",
+    "CHAPTERS_LEFT_OUT": "为控制时长省略了：{chapters}。添加说明即可调整保留内容。",
+    "NO_SINGLE_STORY": "这个视频没有一条贯穿始终的故事。本系列沿着其中最长的连贯主线展开。",
+    "TOPIC_THIN": "只有 {count, plural, one {# 个片段} other {# 个片段}}真正围绕这个话题。",
+    "TOPIC_BROADENED": "“{topic}”对这个视频来说范围较广，所以我们理解为：{interpretation}",
+    "TARGET_SHORTENED": "视频较短，所以回顾也更短。",
+    "COARSE_TRANSCRIPT": "这份转录没有逐词时间戳，剪辑点会不够精确。",
+    "SPONSOR_SKIPPED": "我们省略了一段赞助内容。",
+    "COLD_OPEN_SKIPPED": "没有足够有力的句子可作冷开场，因此第 1 集从开头开始。"
+  },
+  "workflowErrors": {
+    "topic_not_found": {
+      "title": "这个视频几乎没有讲到“{topic}”",
+      "body": "我们只找到一些顺带提及，没有完整的片段。你的分钟数已退还。",
+      "suggestionsLabel": "这个视频主要在讲：",
+      "mentions": "在 {times} 处被简短提及。",
+      "cta": "改为生成精彩片段"
+    },
+    "source_too_short": {
+      "series": {
+        "title": "这个视频太短，无法做成系列",
+        "body": "系列至少需要够分成两集的内容。你的分钟数已退还。"
+      },
+      "topic": {
+        "title": "这个视频太短，没法按话题查找",
+        "body": "按话题查找适用于 1 分钟以上的视频。你的分钟数已退还。"
+      },
+      "recap": {
+        "title": "这个视频太短，无法做成回顾",
+        "body": "回顾适用于 3 分钟以上的视频。你的分钟数已退还。"
+      },
+      "trailer": {
+        "title": "这个视频太短，无法做成预告",
+        "body": "预告适用于 3 分钟以上的视频。你的分钟数已退还。"
+      },
+      "cta": "改为生成精彩片段"
+    },
+    "no_story": {
+      "title": "没有找到可以拆分成多集的故事",
+      "body": "这个视频没有一条足够长的故事线。你的分钟数已退还。",
+      "cta": "改为生成回顾"
+    },
+    "recap_unsupported": {
+      "title": "要点不够多，无法生成回顾",
+      "body": "你的分钟数已退还。",
+      "cta": "改为生成精彩片段"
+    },
+    "trailer_unbuildable": {
+      "title": "无法在不剧透结局的情况下做出预告",
+      "body": "你的分钟数已退还。",
+      "cta": "改为生成回顾"
+    },
+    "analysis_incomplete": {
+      "title": "我们没能读完整个视频",
+      "body": "部分分析失败。你的分钟数已退还。",
+      "cta": "重试"
+    },
+    "plan_failed": {
+      "title": "AI 剪辑师没能完成这个方案",
+      "body": "你的分钟数已退还。",
+      "cta": "重试"
+    },
+    "render_incomplete": {
+      "title": "视频有一部分无法渲染",
+      "body": "你的分钟数已退还。",
+      "cta": "重试"
+    },
+    "transcript_untimed": {
+      "title": "这份转录没有时间戳",
+      "body": "精确剪辑需要时间戳。请改为上传文件。",
+      "cta": "返回首页"
+    },
+    "highlightsInstead": "改为生成精彩片段"
+  },
+  "clipLoadFailed": "无法加载此片段。",
+  "retryPlayback": "重新播放",
+  "recovery": {
+    "heading": "再稍等一下",
+    "messages": {
+      "snags": "遇到了一点小状况，这次会比平时多花一点时间。",
+      "hiccup": "一个小插曲拖慢了进度，可能还需要多一点时间。",
+      "scenicRoute": "这个视频选了条风景路线，会比平时多花一点时间。",
+      "bumps": "路上有点小颠簸，我们正在处理，再给我们一点时间。",
+      "slower": "这次的节奏比平时慢一点，我们还在继续努力。"
+    }
+  },
+  "fx": {
+    "title": "剪辑",
+    "intensity": "剪辑强度",
+    "intensityHint": "剪辑效果有多猛。修改后会重新渲染所有片段。",
+    "rendering": "正在渲染剪辑…",
+    "queued": "正在重新渲染你的片段，可能需要几分钟；你可以离开此页面。",
+    "applied": "剪辑已应用",
+    "jobFailed": "无法应用剪辑：{message}",
+    "jobErrors": {
+      "WORKER_UNAVAILABLE": "没有渲染器接手这项任务，请过几分钟再试。",
+      "WORKER_STOPPED": "渲染器在剪辑完成前停止了。",
+      "CLIP_JOB_TIMEOUT": "渲染耗时过长。"
+    },
+    "jobInProgress": "重新渲染已在进行中，完成后你的剪辑会自动更新。",
+    "jobUnreachable": "无法获取重新渲染的状态，它可能仍在进行。",
+    "jobDenied": "你已无权查看这次重新渲染。请重新登录并刷新页面。",
+    "retry": "重试",
+    "approxTiming": "该视频没有逐字时间，字幕和效果使用近似时间。",
+    "simplified": "此片段的部分效果已简化。"
+  },
+  "sourceRange": "片段 {start}–{end}"
+}

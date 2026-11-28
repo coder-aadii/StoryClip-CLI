@@ -1,0 +1,149 @@
+{
+  "plans": {
+    "pro": {
+      "description": "Untuk kreator yang membuat clip secara konsisten tiap bulan.",
+      "cta": "Upgrade ke Pro"
+    },
+    "scale": {
+      "description": "Untuk kreator yang memublikasikan setiap hari.",
+      "cta": "Upgrade ke Creator"
+    }
+  },
+  "highlights": {
+    "videos": "{count} video di-clip setiap bulan",
+    "youtube": "Video sampai {length} per video",
+    "fonts": "Font kustom, B-roll, dan template caption",
+    "priority": "Pemrosesan prioritas",
+    "minutes": "{length} video setiap bulan",
+    "hd": "Clip 720p",
+    "fullHd": "Clip Full HD 1080p",
+    "scheduling": "Posting otomatis dan jadwalkan clip ke YouTube dan TikTok"
+  },
+  "runtime": {
+    "minutes": "{count} mnt",
+    "hours": "{count} jam",
+    "hoursMinutes": "{hours} jam {minutes} mnt"
+  },
+  "perMonth": "/bln",
+  "videosEach": "{count} video/bln · sampai {length} tiap video",
+  "mostPopular": "Paling populer",
+  "currentPlan": "Paket saat ini",
+  "plansLabel": "Paket",
+  "continueWith": "Lanjut dengan {name}",
+  "openingCheckout": "Membuka checkout aman…",
+  "checkoutError": "Checkout tidak bisa dibuka. Coba lagi, ya.",
+  "maybeLater": "Nanti saja",
+  "prorated": "Kamu mengonfirmasi perubahan di Stripe dan hanya membayar selisih prorata.",
+  "cancelAnytime": "Batalkan kapan saja · Checkout aman dengan Stripe",
+  "appStore": "Langgananmu dikelola lewat App Store. Kamu bisa ganti paket di aplikasi iOS SupoClip.",
+  "selfHosted": {
+    "title": "Host sendiri",
+    "body": "Jalankan SupoClip di komputermu sendiri, tanpa langganan atau batas video bulanan. Perlu penyiapan; kamu menyediakan perangkat dan layanan AI berbayar yang kamu pilih.",
+    "guide": "Panduan host sendiri"
+  },
+  "upgrade": {
+    "start": {
+      "eyebrow": "Siap kapan kamu siap",
+      "title": "Ubah video panjang jadi clip siap diposting",
+      "body": "Pilih paket yang di-host dan kami yang memproses, atau host sendiri aplikasi open source di komputermu, gratis."
+    },
+    "limit": {
+      "eyebrow": "Bulan yang padat",
+      "titleCount": "Kamu sudah meng-clip semua {count} video di {plan}",
+      "titleAll": "Kamu sudah memakai semua yang ada di {plan}",
+      "bodyRefreshKeep": "Menitmu diperbarui pada {date}. Jaga momentum dengan {plan}: {length} video sebulan. Percobaan ini tidak memakai menit.",
+      "bodyPeriodKeep": "Menitmu diperbarui bulan depan. Jaga momentum dengan {plan}: {length} video sebulan. Percobaan ini tidak memakai menit.",
+      "bodyRefresh": "Menitmu diperbarui pada {date}. Percobaan ini tidak memakai menit.",
+      "bodyPeriod": "Menitmu diperbarui bulan depan. Percobaan ini tidak memakai menit.",
+      "titleShort": "Video ini butuh {required} menit, dan kamu punya {remaining} tersisa",
+      "titleMinutes": "Kamu sudah memakai semua {length} di {plan} bulan ini"
+    },
+    "long": {
+      "eyebrow": "Yang panjang",
+      "title": "{plan} bisa menerima video {runtime} ini",
+      "fallbackPlan": "Paket yang lebih besar",
+      "body": "{plan} menerima video sampai {length}. {next} menangani sampai {nextLength}, jadi yang ini langsung lolos. Percobaan ini tidak memakai menit.",
+      "bodyNoNext": "{plan} menerima video sampai {length}. Percobaan ini tidak memakai menit."
+    },
+    "fonts": {
+      "eyebrow": "Jadikan milikmu",
+      "title": "Caption dengan font brand-mu sendiri",
+      "body": "Unggah .ttf atau .otf apa pun dan pakai di setiap clip, supaya short-mu terlihat berasal dari kamu."
+    },
+    "explore": {
+      "eyebrow": "Ruang lebih untuk berkarya",
+      "title": "Lakukan lebih banyak dengan {plan}",
+      "titleFallback": "Paket untuk setiap kreator",
+      "body": "Lebih banyak video tiap bulan, clip Full HD, sumber yang lebih panjang, dan pemrosesan prioritas."
+    },
+    "member": {
+      "eyebrow": "Batasmu di {team}",
+      "pausedTitle": "Kursimu dijeda untuk video baru",
+      "pausedBody": "Admin tim menjeda pembuatan video untuk kursimu. Minta mereka mengaktifkannya lagi. Percobaan ini tidak memakai menit.",
+      "title": "Kamu sudah memakai {limit} menit jatahmu bulan ini",
+      "titleShort": "Video ini butuh {required} menit, dan batasmu tersisa {remaining}",
+      "bodyRefresh": "Admin tim menetapkan batasmu {limit} menit sebulan. Batas ini diperbarui pada {date}, atau minta admin menaikkannya. Percobaan ini tidak memakai menit.",
+      "bodyPeriod": "Admin tim menetapkan batasmu {limit} menit sebulan. Batas ini diperbarui bulan depan, atau minta admin menaikkannya. Percobaan ini tidak memakai menit."
+    },
+    "teamStart": {
+      "title": "{team} butuh paket Tim untuk membuat klip",
+      "body": "Klip yang dibuat di sini memakai jam bersama tim, jadi tim perlu paket Tim yang aktif lebih dulu."
+    },
+    "agent": {
+      "eyebrow": "Agent · Creator",
+      "title": "Klip, rencanakan, dan posting cukup dengan meminta",
+      "titleUsed": "Itu pesan Agent gratis terakhirmu",
+      "body": "Agent termasuk dalam Creator. Bilang saja maumu, lalu ia membuat klip, menyusun jadwal minggumu, dan terus memposting sementara kamu menjalani harimu.",
+      "bodyUsed": "Semoga membantu. Agent termasuk dalam Creator: lanjutkan dari terakhir kali, semua percakapan tetap tersimpan.",
+      "perks": {
+        "0": "Agent: membuat klip, mengedit, menjadwalkan, dan memposting untukmu",
+        "1": "Kalender posting yang ia isi dan rapikan",
+        "2": "Plus semua fitur Creator lainnya, seperti Full HD 1080p"
+      }
+    },
+    "preview": {
+      "eyebrow": "Klip gratismu",
+      "title": "Buka {count} klip lainnya",
+      "body": "Semuanya sudah ditemukan dan menunggu. Pilih paket dan semuanya dibuat langsung di proyek ini."
+    }
+  },
+  "illustration": {
+    "fitsIn": "muat di {plan}",
+    "yourVideo": "Videomu",
+    "today": "Hari ini",
+    "videosUpFrom": "video sebulan, naik dari {count}",
+    "videosWith": "video sebulan dengan {plan}",
+    "sample": "dan itu sebabnya",
+    "ownFont": "atau .ttf milikmu",
+    "serif": "Serif",
+    "display": "Display",
+    "mono": "Mono",
+    "hoursUpFrom": "jam video sebulan, naik dari {count}",
+    "hoursWith": "jam video sebulan dengan {plan}"
+  },
+  "creatorCode": {
+    "applied": "Kode kreator <mono>{code}</mono>: diskon 20% untuk 3 bulan pertama.",
+    "remove": "Hapus",
+    "prompt": "Punya kode kreator?",
+    "placeholder": "Kode kreator",
+    "apply": "Terapkan",
+    "invalid": "Kode itu tidak valid."
+  },
+  "minutesEach": "{minutes}/bln · {resolution} · sampai {length} tiap video",
+  "perYear": "/thn",
+  "monthlyEquivalent": "${price}/bln",
+  "interval": {
+    "label": "Periode tagihan",
+    "monthly": "Bulanan",
+    "yearly": "Tahunan",
+    "monthsFree": "{count, plural, one {# bulan gratis} other {# bulan gratis}}"
+  },
+  "comingSoon": "Segera hadir",
+  "teamWorkspaceBody": "{team} menggunakan langganan Tim bersama. Pemilik dapat mengaktifkan paket atau menambah kursi untuk memperluas jam bulanan.",
+  "manageTeamSeats": "Kelola tim & kursi",
+  "teamAskOwner": "{team} menggunakan langganan Tim bersama. Minta pemilik tim untuk mengaktifkan paket atau menambah kursi.",
+  "gallery": {
+    "regionLabel": "Contoh clip yang dibuat dengan SupoClip",
+    "viewAll": "Contoh lainnya"
+  }
+}

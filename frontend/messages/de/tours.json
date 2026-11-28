@@ -1,0 +1,155 @@
+{
+  "new": "Neu",
+  "welcomeBadge": "Willkommen",
+  "next": "Weiter",
+  "back": "Zurück",
+  "done": "Fertig",
+  "start": "Zeig mir 👀",
+  "notNow": "Nicht jetzt",
+  "progress": "{current} von {total}",
+  "welcome": {
+    "intro": {
+      "title": "Willkommen bei SupoClip",
+      "body": "Gib uns ein langes Video, und wir machen aus seinen besten Momenten kurze Hochformat-Clips, mit Untertiteln und bereit zum Posten. Eine Tour von zwei Minuten: wie du deine ersten Clips erstellst, dann jede Seite, die du nutzen wirst."
+    },
+    "source": {
+      "title": "Starte mit einem Video",
+      "body": "Füge hier einen YouTube-, Twitch- oder Kick-Link ein oder lade mit der Büroklammer eine Datei hoch, und drück dann auf den Pfeil. Podcasts, Interviews und Vorträge ab 10 Minuten funktionieren am besten."
+    },
+    "workflows": {
+      "title": "Wähle, was entstehen soll",
+      "body": "Highlights liefert die besten Momente, jeder für sich verständlich – ideal für den ersten Versuch. Die anderen machen aus einem Video eine Serie, eine Zusammenfassung, einen Trailer oder alle Clips zu einem Thema."
+    },
+    "settings": {
+      "title": "Stil einmal festlegen",
+      "body": "Cliplänge, Untertitel, Bildausschnitt und B-Roll findest du in diesem Menü. Die Standardwerte sind gut, und deine Änderungen merken wir uns."
+    },
+    "library": {
+      "title": "Mediathek",
+      "body": "Jedes Video, das du clippst, landet hier, das neueste zuerst, und du kannst sie durchsuchen. Du kannst die Seite verlassen, während eins verarbeitet wird; es läuft weiter und erscheint hier, sobald es fertig ist."
+    },
+    "libraryClips": {
+      "title": "Deine Clips, nach Bewertung",
+      "body": "Öffne ein Video, um seine Clips zu sehen, die beste Bewertung zuerst. Lade einen oder alle herunter, oder öffne einen Clip im Studio, um ihn zu kürzen, Untertitel zu korrigieren oder neu zuzuschneiden."
+    },
+    "social": {
+      "title": "Verbinde deine Konten",
+      "body": "Verknüpfe hier deine Social-Media-Konten, um Clips direkt aus SupoClip zu posten, ohne sie vorher herunterzuladen."
+    },
+    "analytics": {
+      "title": "Sieh, was funktioniert",
+      "body": "Aufrufe, Likes und Kommentare deiner Posts kommen hierher zurück, nach Plattform, Hook und Länge. Nach ein paar Posts wählt SupoClip damit Clips, die deinen besten ähneln."
+    },
+    "agents": {
+      "title": "Clips aus deinem KI-Assistenten",
+      "body": "Verbinde Claude, ChatGPT oder Grok und bitte im Chat um Clips: Server-URL einfügen und anmelden, kein Schlüssel nötig. Du baust etwas? Erstelle unten einen API-Schlüssel."
+    },
+    "captions": {
+      "title": "Dein Untertitelstil",
+      "body": "Lege Schrift, Größe und Farbe fest, mit denen jedes neue Video startet, mit Vorschau. Für einzelne Videos kannst du sie weiterhin ändern."
+    },
+    "plan": {
+      "title": "Dein Plan",
+      "body": "Pläne zählen Minuten der Videos, die du mitbringst, nicht Clips. Hier siehst du, was du diesen Monat verbraucht hast, und kannst deinen Plan ändern."
+    },
+    "finish": {
+      "title": "Du bist startklar",
+      "body": "Das war alles. Füge hier deinen ersten Link ein, den Rest erledigen wir."
+    }
+  },
+  "creator-agent": {
+    "intro": {
+      "title": "Lern deinen Agenten kennen",
+      "body": "Deine Startseite kann dir jetzt die Arbeit abnehmen. Sag dem Agenten, was du willst, und er clippt, bearbeitet, schreibt Beschreibungen, plant und postet, mit denselben Werkzeugen wie du."
+    },
+    "talk": {
+      "title": "Sag es, wie du es einem Cutter sagen würdest",
+      "body": "Füg einen Link ein oder häng ein Video an und schreib dazu, was du willst: „drei Clips für TikTok diese Woche“, „schneid die Ähms aus Clip 2 raus“, „poste den besten morgen um 18 Uhr“. Gibt es etwas zu entscheiden, zeigt er dir Optionen zum Antippen."
+    },
+    "suggestions": {
+      "title": "Ideen nur für dich",
+      "body": "Diese Vorschläge kommen aus deinem eigenen Konto: Clips aus deinem neuesten Projekt posten, eine Serie daraus machen oder sehen, was ansteht. Ein Tipp, und Agent legt los."
+    },
+    "manual": {
+      "title": "Deine Einstellungen bleiben einen Klick entfernt",
+      "body": "Willst du für ein Video jede Einstellung vor dir haben? Dieser Link öffnet das Erstellformular nur dieses eine Mal. Was zuerst aufgeht, legst du in den Einstellungen fest."
+    },
+    "calendar": {
+      "title": "Alles in einem Kalender",
+      "body": "Jeder geplante, gepostete und fehlgeschlagene Clip an einem Ort. Zieh einen Beitrag auf einen anderen Tag, um ihn zu verschieben, oder lass den Agenten die Lücken zu guten Zeiten mit deinen besten ungeposteten Clips füllen. Sofort gepostet wird nur mit deinem OK."
+    }
+  },
+  "workflows": {
+    "intro": {
+      "title": "Neu: Workflows",
+      "body": "Mit Workflows wählst du vor dem Start, was entstehen soll. Neben Highlights kann ein Video jetzt zu einer nummerierten Serie, allen Clips zu einem Thema, einer Zusammenfassung oder einem Trailer werden. Hier ist ein kurzer Blick auf jeden."
+    },
+    "highlights": {
+      "title": "Highlights",
+      "body": "Das kennst du schon: die besten Momente, jeder für sich verständlich. Das bleibt die Standardeinstellung."
+    },
+    "series": {
+      "title": "Serie",
+      "body": "Macht aus einem langen Video nummerierte Teile, die aufeinander aufbauen und Lust auf den nächsten machen. Ideal für Geschichten und Tutorials."
+    },
+    "topic": {
+      "title": "Thema",
+      "body": "Nenne ein Thema und erhalte jeden starken Moment dazu, etwa „Preise“ in einem langen Interview. Du tippst es in die Zeile unter deinem Link."
+    },
+    "recap": {
+      "title": "Zusammenfassung",
+      "body": "Ein kurzes Video mit den wichtigsten Punkten des gesamten Videos, die auch im Bild aufgelistet werden."
+    },
+    "trailer": {
+      "title": "Trailer",
+      "body": "Eine kurze Vorschau, die Lust auf das ganze Video macht, ohne das Ende zu verraten."
+    },
+    "instructions": {
+      "title": "Gib deine eigene Richtung vor",
+      "body": "Egal was du wählst: Füge einen Hinweis wie „nur die lustigen Momente“ hinzu, und die Clips richten sich danach."
+    },
+    "settings": {
+      "title": "Alles andere findest du hier",
+      "body": "Länge, Untertitel, Bildausschnitt, Bereinigung und B-Roll liegen jetzt in einem Menü. Wir merken uns deine Auswahl, du stellst sie also nur einmal ein."
+    }
+  },
+  "composer-settings": {
+    "settings": {
+      "title": "Alles andere findest du hier",
+      "body": "Länge, Untertitel, Bildausschnitt, Bereinigung und B-Roll liegen jetzt in einem Menü. Wir merken uns deine Auswahl, du stellst sie also nur einmal ein."
+    }
+  },
+  "dynamic-edits": {
+    "intro": {
+      "title": "Neu: Dynamische Edits",
+      "body": "Deine Clips lassen sich jetzt schneiden wie von den besten Kurzvideo-Editoren: animierte Untertitel, Reframes, Soundeffekte und Musik genau auf den Momenten, die zählen. Die KI findet diese Momente, du entscheidest, wie hart sie einschlagen."
+    },
+    "intensity": {
+      "title": "Wähle, wie stark es knallt",
+      "body": "<b>Dezent:</b> Untertitel mit Kontur, ab und zu ein Reframe und leise Musik, wie ein Podcast-Clip.\n<b>Kräftig:</b> Untertitel im Hormozi-Stil auf einer dunklen Pille, Wort für Wort, das Schlüsselwort in einer Box, dazu Zooms, die stehen bleiben.\n<b>Maximal:</b> fette Großbuchstaben mit Kontur, fast jede Zeile ein Reframe, lautere Schläge und ab und zu ein Blitz an einem Schnitt.\n<b>Aus</b> lässt Clips, wie sie sind."
+    },
+    "sound": {
+      "title": "Sound, Musik und Flüche",
+      "body": "Soundeffekte landen auf Schnitten und Momenten im Bild, nie auf bloßem Reden. Musik gibt es in sieben Stimmungen, von entspannt bis aggressiv: Lass sie auf „Passend zum Video“, dann wählt die KI eine passende, oder wähle selbst. Flüche werden überpiept und in den Untertiteln als f*** gezeigt. Sobald Edits an sind, gibt es für alles einen Schalter unter „Feinabstimmung“."
+    },
+    "captions": {
+      "title": "Animierte Untertitel-Stile",
+      "body": "Textmarker setzt das Schlüsselwort in eine Box, Emoji Drop zeigt ein Emoji unter dem, worüber gesprochen wird, und Hinter dem Kopf stellt ein riesiges Wort hinter die sprechende Person. Jeder Stil übernimmt den Look deiner Intensität und funktioniert auch allein, mit Edits aus."
+    }
+  },
+  "dynamic-edits-studio": {
+    "intro": {
+      "title": "Dynamische Edits im Studio",
+      "body": "Jeden Effekt eines Clips kannst du hier vor dem Export ändern, einzeln oder alle auf einmal."
+    },
+    "panel": {
+      "title": "Der Tab Edits",
+      "body": "Ändere Intensität, Musikstimmung oder Schalter für diesen Clip, lass die KI die Edits neu planen oder entferne alle. Die Liste zeigt jeden Moment, den die KI gewählt hat: Ein Klick springt dorthin. Jede Änderung lässt sich rückgängig machen."
+    },
+    "lane": {
+      "title": "Jeder Effekt auf der Timeline",
+      "body": "Jeder Zoom und jeder Sound ist hier ein Block, und die Musikspur zeigt die Musik unter der Stimme. Zieh einen Block, um ihn zu verschieben, doppelklicke, um ihn zu ändern, oder wähl ihn aus und drück Entf. Doppelklicke auf eine leere Stelle, um einen Sound hinzuzufügen."
+    }
+  },
+  "skip": "Überspringen"
+}

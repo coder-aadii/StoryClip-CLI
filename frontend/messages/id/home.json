@@ -1,0 +1,538 @@
+{
+  "greeting": {
+    "upLate": "Masih begadang",
+    "goodMorning": "Selamat pagi",
+    "goodAfternoon": "Selamat siang",
+    "goodEvening": "Selamat malam",
+    "named": "{greeting}, {name}"
+  },
+  "subtitle": "Masukkan video panjang. Dapatkan clip ber-caption, siap diposting.",
+  "errors": {
+    "fonts": "Font tidak bisa dimuat sekarang.",
+    "notVideo": "Ini tidak terlihat seperti file video. Coba MP4, MOV, MKV, atau WebM.",
+    "fontType": "Font kustom hanya mendukung file .ttf dan .otf.",
+    "uploadFont": "Gagal mengunggah font",
+    "uploadFontRetry": "Gagal mengunggah font. Coba lagi, ya.",
+    "processVideo": "Gagal memproses video. Coba lagi, ya.",
+    "fileTooLarge": "File ini {size}, melebihi batas unggah {limit}. Coba ekspor yang lebih pendek atau file yang lebih kecil.",
+    "api": "Error API: {status}"
+  },
+  "status": {
+    "uploading": "Mengunggah video…",
+    "checkingLength": "Memeriksa durasi video…",
+    "starting": "Memulai generasi…",
+    "working": "Sedang bekerja…",
+    "uploadingFont": "Mengunggah…"
+  },
+  "drop": "Lepas untuk mengunggah videomu",
+  "readyToUpload": "{size} · siap diunggah",
+  "removeFile": "Hapus file",
+  "youtubeUrl": "URL YouTube, Twitch, atau Kick",
+  "urlPlaceholder": "Tempel tautan VOD/clip YouTube, Twitch, atau Kick",
+  "uploadFile": "Unggah file video",
+  "upload": "Unggah",
+  "defaultTemplate": "Bawaan",
+  "defaultTemplateDescription": "Caption kata per kata",
+  "captionStyle": "Gaya caption",
+  "customize": "Sesuaikan",
+  "resetTemplate": "Kembalikan ke template",
+  "font": "Font",
+  "uploadFont": "Unggah font",
+  "customFontsPaid": "Pakai font sendiri dengan paket berbayar",
+  "searchFonts": "Cari font",
+  "templateDefault": "Bawaan template",
+  "noFontMatch": "Tidak ada font yang cocok dengan pencarianmu",
+  "color": "Warna",
+  "template": "Template",
+  "captionColor": "Warna caption {color}",
+  "customColor": "Warna kustom",
+  "customCaptionColor": "Warna caption kustom",
+  "livePreview": "Pratinjau langsung",
+  "framing": "Framing",
+  "framingOptions": {
+    "vertical": {
+      "label": "Auto 9:16",
+      "hint": "Menyesuaikan subjek dan konteks adegan"
+    },
+    "vertical_fit": {
+      "label": "Frame penuh 9:16",
+      "hint": "Tampilkan semuanya di kanvas vertikal"
+    },
+    "vertical_pan": {
+      "label": "Pan pembicara",
+      "hint": "Mengikuti siapa yang sedang bicara"
+    },
+    "vertical_split": {
+      "label": "Split-screen",
+      "hint": "Dua pembicara bertumpuk"
+    },
+    "original": {
+      "label": "Asli",
+      "hint": "Pertahankan rasio aspek sumber"
+    }
+  },
+  "captions": "Caption",
+  "noCaptions": "Tanpa caption",
+  "broll": "B-roll",
+  "brollHint": "Menambahkan stok video dari Pexels saat pembicara menyebut sesuatu yang bisa ditampilkan",
+  "cleanup": "Pembersihan",
+  "composerSettings": {
+    "chip": "Pengaturan",
+    "tour": "Ikuti tur",
+    "limits": "Batas unggahan dan detail",
+    "reset": "Atur ulang semua pengaturan",
+    "on": "Aktif",
+    "off": "Nonaktif"
+  },
+  "cleanupTitle": "Pembersihan clip",
+  "cleanupBody": "Rapatkan jeda kosong dan potong suara pengisi saat render.",
+  "cleanupMore": "Opsi lainnya",
+  "shortenPauses": "Perpendek jeda panjang",
+  "shortenPausesHint": "Potong keheningan yang lebih lama dari ini jadi napas pendek",
+  "pauseThreshold": "Ambang jeda (md)",
+  "removeFillers": "Hapus kata pengisi",
+  "removeFillersHint": "“um”, “uh”, “erm”, dan suara serupa",
+  "extraWords": "Kata atau frasa tambahan untuk dipotong",
+  "extraWordsPlaceholder": "intinya, jujur saja, sebenarnya",
+  "generate": "Buat clip",
+  "limitNote": "{plan}: video sampai {minutes} menit per video, lewat tautan atau unggahan. Setiap video memakai durasinya dalam menit, dicek sebelum kami mulai.",
+  "uploadLimits": "Unggahan sampai {size}. Video di atas 1080p atau 60 fps diturunkan otomatis, bentuknya tetap.",
+  "completionEmails": "Email selesai mengikuti preferensimu di <settings>Pengaturan</settings>.",
+  "recent": "Terbaru",
+  "viewLibrary": "Lihat pustaka",
+  "recentEmpty": "Clip-mu akan muncul di sini. Tempel tautan di atas untuk batch pertama.",
+  "previewHook": "Judul hook-mu mendarat di sini",
+  "previewCaptions": "Begini tampilan caption-mu",
+  "captionSize": {
+    "size": "Ukuran",
+    "templateDefault": "Bawaan template",
+    "small": "Kecil",
+    "medium": "Sedang",
+    "large": "Besar"
+  },
+  "nudge": {
+    "refreshesOn": "Diperbarui pada {date}.",
+    "refreshesNext": "Diperbarui bulan depan.",
+    "startTitle": "Satu video panjang. Seminggu konten shorts.",
+    "startDescription": "Paket mulai {price}/bln untuk {length} video sebulan. Atur semuanya dulu, lalu pilih paket saat kamu siap.",
+    "startPerks": {
+      "ai": "Momen terbaik, dipilih dan diberi skor oleh AI",
+      "captions": "Subtitle sinkron per kata, dalam format 9:16",
+      "formats": "Siap untuk TikTok, Reels, dan Shorts"
+    },
+    "startAction": "Mulai memotong",
+    "startFootnote": "Batalkan kapan saja",
+    "limitTitle": "Kamu sudah memakai semua {length} video bulan ini",
+    "limitWithPlan": "{refreshes} Atau lanjut dengan {plan}: {limit} video sebulan.",
+    "limitAppStore": "{refreshes} Kamu bisa ganti paket di aplikasi iOS SupoClip.",
+    "getPlan": "Ambil {plan}",
+    "remaining": "{count, plural, one {# menit video tersisa bulan ini} other {# menit video tersisa bulan ini}}",
+    "nearWithPlan": "{refreshes} Butuh ruang lebih? {plan} memberi {limit} video sebulan.",
+    "upgrade": "Upgrade",
+    "limitTitleAll": "Kamu sudah memakai menit video bulan ini",
+    "teamStartTitle": "{team} belum punya paket Tim yang aktif",
+    "teamStartOwner": "Aktifkan di pengaturan tim agar semua anggota bisa membuat klip.",
+    "teamStartMember": "Minta pemilik tim untuk mengaktifkan paket Tim.",
+    "teamSettings": "Pengaturan tim",
+    "memberPausedTitle": "Kursimu dijeda untuk video baru",
+    "memberPausedBody": "Admin tim menjeda pembuatan video untukmu. Minta mereka mengaktifkannya lagi.",
+    "teamLimitOwner": "{refreshes} Atau tambah kursi untuk jam bersama yang lebih banyak.",
+    "teamLimitMember": "{refreshes} Atau minta pemilik tim menambah kursi.",
+    "manageSeats": "Tambah kursi",
+    "memberLimitTitle": "Kamu sudah memakai {limit} menit jatahmu bulan ini",
+    "memberLimitBody": "{refreshes} Admin tim bisa menaikkan batasmu.",
+    "memberNearBody": "{refreshes} Admin tim menetapkan batasmu {limit} menit sebulan."
+  },
+  "clipLength": {
+    "picker": "Durasi klip",
+    "title": "Durasi klip",
+    "auto": "Durasi otomatis",
+    "short": "Pendek (15–30 dtk)",
+    "medium": "Sedang (30–60 dtk)",
+    "long": "Panjang (1–2 menit)",
+    "hint": "Target durasi sebelum jeda dan kata pengisi dihapus. Pilihan Anda disimpan sebagai default.",
+    "saveError": "Gagal menyimpan default. Video ini tetap menggunakan pilihan Anda."
+  },
+  "whatToMake": "Apa yang ingin kamu buat?",
+  "workflows": {
+    "highlights": {
+      "label": "Highlight",
+      "hint": "Momen terbaik yang bisa berdiri sendiri"
+    },
+    "series": {
+      "label": "Seri",
+      "hint": "Bagian berurutan yang menceritakan kisah secara utuh"
+    },
+    "topic": {
+      "label": "Topik",
+      "hint": "Setiap momen kuat tentang satu topik"
+    },
+    "recap": {
+      "label": "Ringkasan",
+      "hint": "Satu video pendek berisi poin-poin utama"
+    },
+    "trailer": {
+      "label": "Trailer",
+      "hint": "Satu cuplikan singkat yang bikin orang ingin menonton video lengkapnya"
+    }
+  },
+  "subtitleByWorkflow": {
+    "highlights": "Masukkan video panjang. Dapatkan clip ber-caption, siap diposting.",
+    "series": "Masukkan video panjang. Dapatkan seri bernomor yang bikin penonton terus mengikuti.",
+    "topic": "Masukkan video panjang. Dapatkan setiap momen kuat tentang topik kamu.",
+    "recap": "Masukkan video panjang. Dapatkan satu video pendek berisi poin-poin utama.",
+    "trailer": "Masukkan video panjang. Dapatkan cuplikan singkat yang bikin orang ingin menonton semuanya."
+  },
+  "generateByWorkflow": {
+    "highlights": "Buat clip",
+    "series": "Buat seri",
+    "topic": "Cari momen",
+    "recap": "Buat ringkasan",
+    "trailer": "Buat trailer"
+  },
+  "topic": {
+    "placeholder": "Topik apa? mis. membangun bisnis",
+    "required": "Masukkan topik yang ingin dicari.",
+    "label": "Topik"
+  },
+  "parts": {
+    "picker": "Bagian: {value}",
+    "title": "Jumlah bagian",
+    "auto": "Otomatis",
+    "autoHint": "Kami pilih jumlah bagian yang pas dengan ceritanya",
+    "count": "{count, plural, other {# bagian}}"
+  },
+  "lengthByWorkflow": {
+    "series": {
+      "picker": "Durasi per bagian",
+      "auto": "Otomatis (1–1,5 menit)",
+      "short": "Pendek (30–60 dtk)",
+      "medium": "Sedang (45–90 dtk)",
+      "long": "Panjang (1,5–3 menit)",
+      "hint": "Durasi tiap bagian sebelum jeda dan kata pengisi dihapus."
+    },
+    "recap": {
+      "picker": "Durasi ringkasan",
+      "auto": "Otomatis (menyesuaikan video)",
+      "short": "Pendek (sekitar 45 dtk)",
+      "medium": "Sedang (sekitar 75 dtk)",
+      "long": "Panjang (sekitar 2 menit)",
+      "hint": "Total durasi ringkasan."
+    },
+    "trailer": {
+      "picker": "Durasi trailer",
+      "auto": "Otomatis (sekitar 30 dtk)",
+      "short": "Pendek (sekitar 20 dtk)",
+      "medium": "Sedang (sekitar 40 dtk)",
+      "long": "Panjang (sekitar 1 menit)",
+      "hint": "Total durasi trailer."
+    }
+  },
+  "instructions": {
+    "chip": "Instruksi",
+    "remove": "Hapus instruksi",
+    "counter": "{used}/{max}",
+    "placeholder": {
+      "highlights": "Ada yang spesifik? mis. hanya momen lucu, lewati bagian sponsor",
+      "series": "Ada yang spesifik? mis. fokus pada cerita startup pertamanya",
+      "topic": "Ada yang spesifik? mis. hanya saran praktis, tanpa cerita pribadi",
+      "recap": "Ada yang spesifik? mis. fokus pada saran soal uang",
+      "trailer": "Ada yang spesifik? mis. buat misterius, fokus pada konfliknya"
+    }
+  },
+  "urlRescue": {
+    "moved": "“{text}” dipindahkan ke instruksi.",
+    "undo": "Urungkan",
+    "notALink": "Sepertinya ini instruksi, bukan tautan. Tempel tautan video di sini, dan teks ini kami simpan sebagai instruksi.",
+    "moveToInstructions": "Pindahkan ke instruksi"
+  },
+  "suggestWorkflow": {
+    "series": "Jadikan seri saja?",
+    "seriesCount": "Jadikan seri {count} bagian saja?",
+    "topic": "Cari setiap momen tentang “{topic}” saja?",
+    "recap": "Buat ringkasan saja?",
+    "trailer": "Buat trailer saja?"
+  },
+  "tooShort": {
+    "series": "Video ini berdurasi {duration}. Seri butuh minimal 2 menit. Highlight paling cocok di sini.",
+    "recap": "Video ini berdurasi {duration}. Ringkasan cocok untuk video lebih dari 3 menit.",
+    "trailer": "Video ini berdurasi {duration}. Trailer cocok untuk video lebih dari 3 menit.",
+    "topic": "Video ini berdurasi {duration}. Pencarian topik butuh minimal 1 menit.",
+    "useHighlights": "Pakai Highlight"
+  },
+  "workflowErrors": {
+    "INVALID_WORKFLOW": "Opsi itu tidak didukung.",
+    "INVALID_WORKFLOW_OPTIONS": "Pengaturan itu tidak didukung.",
+    "TOPIC_REQUIRED": "Masukkan topik yang ingin dicari.",
+    "TOPIC_TOO_LONG": "Topik harus kurang dari 120 karakter.",
+    "INVALID_PART_COUNT": "Pilih Otomatis atau 2 sampai 10 bagian.",
+    "INSTRUCTIONS_TOO_LONG": "Instruksi harus kurang dari 500 karakter.",
+    "SOURCE_TOO_SHORT_FOR_SERIES": "Video ini terlalu pendek untuk dijadikan seri. Coba Highlight saja.",
+    "TOO_MANY_PARTS": "Video ini hanya cukup untuk paling banyak {max_parts} bagian. Pilih lebih sedikit bagian atau Otomatis.",
+    "SOURCE_TOO_SHORT_FOR_RECAP": "Video ini sudah pendek. Ringkasan cocok untuk video lebih dari 3 menit.",
+    "SOURCE_TOO_SHORT_FOR_TRAILER": "Trailer cocok untuk video lebih dari 3 menit.",
+    "SOURCE_TOO_SHORT_FOR_TOPIC": "Video ini terlalu pendek untuk pencarian topik. Coba Highlight saja.",
+    "WORKFLOW_NOT_AVAILABLE": "Opsi ini belum tersedia untuk akun kamu.",
+    "INVALID_WORKFLOW_SETTING": "Pengaturan lanjutan itu tidak didukung."
+  },
+  "palette": {
+    "series": "Seri baru",
+    "topic": "Pencarian topik baru",
+    "recap": "Ringkasan baru",
+    "trailer": "Trailer baru"
+  },
+  "advanced": {
+    "chip": "Lanjutan",
+    "title": "Lanjutan",
+    "body": "Pengaturan bawaan cocok untuk sebagian besar video. Ubah hanya jika ada alasannya.",
+    "auto": "Otomatis",
+    "reset": "Kembalikan ke bawaan",
+    "outOfRange": "Masukkan bilangan bulat dari {min} sampai {max}.",
+    "settings": {
+      "hook_title": {
+        "label": "Judul di video",
+        "hint": "Tampilkan judul selama beberapa detik pertama."
+      },
+      "junction_style": {
+        "label": "Potongan antarbagian",
+        "hint": "Cara potongan-potongan klip disambung."
+      },
+      "cold_open": {
+        "label": "Cold open",
+        "hint": "Bagian 1 dimulai dengan kalimat dari bagian lebih lanjut, lalu kembali ke awal."
+      },
+      "part_labels": {
+        "label": "Nomor bagian di judul",
+        "hint": "Setiap judul diawali “Bagian 2:”."
+      },
+      "endings": {
+        "label": "Akhir tiap bagian",
+        "hint": "Di mana setiap bagian berhenti."
+      },
+      "coverage": {
+        "label": "Sumber materi",
+        "hint": "Seberapa banyak isi video yang dicakup."
+      },
+      "max_clips": {
+        "label": "Jumlah klip",
+        "hint": "Jumlah klip paling banyak."
+      },
+      "match": {
+        "label": "Kecocokan topik",
+        "hint": "Apa yang dilakukan jika video hanya mendekati topikmu."
+      },
+      "on_screen_points": {
+        "label": "Tampilkan tiap poin di layar",
+        "hint": "Sebutkan tiap poin sebagai teks saat dimulai."
+      },
+      "target_seconds": {
+        "label": "Durasi dalam detik",
+        "hint": "Menggantikan durasi yang kamu pilih di atas."
+      },
+      "max_points": {
+        "label": "Jumlah poin maksimal",
+        "hint": "Poin yang lebih sedikit memberi ruang lebih, dan rekap bisa lebih pendek."
+      },
+      "spoilers": {
+        "label": "Spoiler",
+        "hint": "Apakah trailer boleh memakai kalimat yang membocorkan akhir."
+      },
+      "ending": {
+        "label": "Kalimat terakhir",
+        "hint": "Trailer diakhiri dengan apa."
+      }
+    },
+    "choices": {
+      "auto": "Otomatis",
+      "soft": "Transisi halus",
+      "hard": "Potongan langsung",
+      "cliffhanger": "Bikin penasaran dengan bagian berikutnya",
+      "natural": "Selesaikan pemikirannya",
+      "best_chapters": "Bab terbaik",
+      "start_to_finish": "Berurutan, dari awal",
+      "whole_video": "Seluruh video",
+      "best_moments": "Hanya momen terbaik",
+      "broad": "Izinkan yang mendekati",
+      "strict": "Hanya topik yang persis",
+      "relaxed": "Diizinkan",
+      "question": "Sebuah pertanyaan"
+    }
+  },
+  "edits": {
+    "section": "Editan",
+    "title": "Intensitas editan",
+    "body": "AI menandai momen yang penting. Kamu yang pilih seberapa keras tiap momen menghantam.",
+    "intensity": {
+      "off": {
+        "label": "Mati",
+        "hint": "Potongan bersih, tanpa tambahan"
+      },
+      "subtle": {
+        "label": "Halus",
+        "hint": "Sesekali bingkai ulang, musik pelan"
+      },
+      "bold": {
+        "label": "Tegas",
+        "hint": "Punch-in di momen penting, hentakan di potongan"
+      },
+      "max": {
+        "label": "Maksimal",
+        "hint": "Bingkai ulang cepat, hentakan dan musik lebih keras"
+      }
+    },
+    "offHint": "Aktifkan edit untuk menambahkan bingkai ulang, efek suara, dan musik di momen yang penting.",
+    "groups": {
+      "sound": "Suara",
+      "motion": "Gerakan",
+      "retention": "Bikin terus menonton"
+    },
+    "options": {
+      "sfx": {
+        "label": "Efek suara",
+        "hint": "Hentakan dan pop singkat di potongan dan grafis"
+      },
+      "music": {
+        "label": "Musik",
+        "hint": "Musik latar yang mengecil saat suara bicara"
+      },
+      "musicMood": "Suasana musik",
+      "zooms": {
+        "label": "Zoom",
+        "hint": "Bingkai ulang dan zoom singkat di momen penting"
+      },
+      "shake": {
+        "label": "Guncangan kamera",
+        "hint": "Sentakan di momen paling keras"
+      },
+      "transitions": {
+        "label": "Transisi",
+        "hint": "Kilatan sesekali di tempat klip dipotong"
+      },
+      "speed": {
+        "label": "Ramp kecepatan dan freeze",
+        "hint": "Percepat bagian awal, bekukan sebelum klimaks"
+      },
+      "censor": {
+        "label": "Kata kasar",
+        "hint": "Cara kata kasar ditutupi"
+      },
+      "wait_for_it": {
+        "label": "Stiker “Tunggu dulu”",
+        "hint": "Memancing klimaks yang akan datang"
+      },
+      "progress_bar": {
+        "label": "Bilah progres",
+        "hint": "Bilah tipis di tepi bawah"
+      },
+      "loop_ending": {
+        "label": "Akhir berulang",
+        "hint": "Memudarkan akhir ke awal agar terulang mulus"
+      },
+      "reactions": {
+        "label": "Reaksi GIF",
+        "hint": "GIF reaksi di momen paling lucu"
+      }
+    },
+    "moods": {
+      "auto": "Sesuai video",
+      "hype": "Semangat",
+      "chill": "Santai",
+      "dramatic": "Dramatis",
+      "funny": "Lucu",
+      "inspiring": "Inspiratif",
+      "dark": "Gelap",
+      "aggressive": "Agresif"
+    },
+    "censor": {
+      "off": "Biarkan apa adanya",
+      "bleep": "Bip",
+      "bleep_bar": "Bip dan tutup mulut",
+      "bleep_pixelate": "Bip dan piksel mulut"
+    },
+    "fineTune": "Atur detail"
+  },
+  "animatedCaptions": {
+    "title": "Animasi",
+    "demoLine": "Seluruh omzet kami naik 300% hanya dalam setahun",
+    "demoSticker": "Masa sih!",
+    "needsFace": "Paling bagus dengan wajah di kamera",
+    "templates": {
+      "marker_circle": {
+        "name": "Lingkaran Spidol",
+        "description": "Lingkaran, garis bawah, dan panah coretan tangan di kata kunci"
+      },
+      "emoji_drop": {
+        "name": "Emoji Drop",
+        "description": "Kata muncul saat diucapkan, dengan emoji di bawah momen besar"
+      },
+      "slam": {
+        "name": "Hantam",
+        "description": "Kata kunci raksasa menghantam layar"
+      },
+      "behind_head": {
+        "name": "Di Belakang Kepala",
+        "description": "Satu kata raksasa muncul di belakang pembicara"
+      },
+      "stat_counter": {
+        "name": "Penghitung Angka",
+        "description": "Angka yang diucapkan naik lalu tercap di tempatnya"
+      },
+      "kinetic_stack": {
+        "name": "Tumpukan Kinetik",
+        "description": "Hook menumpuk di layar dalam baris tebal"
+      },
+      "decode_glitch": {
+        "name": "Glitch Dekode",
+        "description": "Huruf teracak lalu terkunci di tempatnya"
+      },
+      "highlighter_swipe": {
+        "name": "Stabilo",
+        "description": "Kata muncul saat diucapkan; kata kunci masuk ke kotak berwarna"
+      },
+      "face_doodles": {
+        "name": "Coretan Wajah",
+        "description": "Kilau, tanduk, dan panah yang mengikuti wajah pembicara"
+      }
+    }
+  },
+  "sourceRange": {
+    "start": "Mulai",
+    "end": "Selesai",
+    "format": "Gunakan h:mm:ss, misalnya 1:30:00",
+    "first": "{minutes} menit pertama",
+    "last": "{minutes} menit terakhir",
+    "selected": "Memotong {length}. Memakai {minutes} menit.",
+    "problems": {
+      "invalid": "Masukkan waktu mulai dan selesai.",
+      "order": "Waktu selesai harus setelah waktu mulai.",
+      "outOfBounds": "Pilih waktu antara 0:00 dan {duration}.",
+      "tooShort": "Pilih minimal {min} menit.",
+      "tooLong": "Pilih paling lama {max} menit."
+    }
+  },
+  "tooLongPanel": {
+    "title": "Video {runtime} ini melebihi batas {minutes} menit kamu",
+    "body": "Pilih bagian sampai {minutes} menit dan kami hanya memotong bagian itu. Hanya bagian itu yang dihitung ke menitmu.",
+    "bodyUpgrade": "Pilih bagian sampai {minutes} menit dan kami hanya memotong bagian itu, atau upgrade ke {plan} untuk video sampai {nextMinutes} menit. Hanya bagian yang kamu pilih yang dihitung ke menitmu.",
+    "submit": "Potong bagian ini",
+    "cancel": "Pilih video lain",
+    "label": "Bagian video yang akan dipotong",
+    "upgradeTo": "Upgrade ke {plan} (sampai {minutes} menit per video)",
+    "checkoutFailed": "Checkout tidak terbuka. Coba lagi sebentar lagi."
+  },
+  "lengthErrors": {
+    "durationUnavailable": {
+      "title": "Kami tidak bisa membaca durasi video ini",
+      "body": "Kalau ini livestream yang masih berjalan, tunggu sampai selesai lalu tempel rekaman lengkapnya. Kalau sudah selesai, coba lagi dalam semenit. Tidak ada menit yang terpakai."
+    },
+    "tooLongNoRange": {
+      "title": "Video ini melebihi batas {minutes} menit kamu",
+      "body": "Video ini lebih panjang dari yang diizinkan paketmu, dan bagiannya tidak bisa dipilih di sini. Coba rekaman lengkapnya atau video yang lebih pendek. Tidak ada menit yang terpakai."
+    }
+  },
+  "askAgentInstead": "Tanya agen saja",
+  "creatorTag": "Creator",
+  "agentLapsed": "Obrolan Agent-mu tersimpan.",
+  "agentTrialEnded": "Pesan Agent gratismu sudah habis.",
+  "agentBackWithCreator": "Lanjutkan dengan Creator"
+}

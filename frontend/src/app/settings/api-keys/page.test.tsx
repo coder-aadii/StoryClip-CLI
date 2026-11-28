@@ -1,0 +1,138 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import ApiKeysPage from "./page";
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), message: vi.fn(), error: vi.fn() } }));
+
+const mocks = vi.hoisted(() => ({
+  verified: false,
+  send: vi.fn(),
+  refetch: vi.fn(),
+}));
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: { user: { id: "user-1", email: "owner@example.com", emailVerified: mocks.verified } }, isPending: false, refetch: mocks.refetch }),
+  authClient: { sendVerificationEmail: mocks.send },
+}));
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.unstubAllGlobals();
+  mocks.verified = false;
+  window.history.replaceState(null, "", "/settings/api-keys");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ api_keys: [
+    { id: "key-1", name: "Existing key", key_prefix: "sk_test", created_at: null, last_used_at: null, revoked: false },
+  ] }), { status: 200 })));
+});
+
+it("blocks creation but lets unverified users send a link and revoke an existing key", async () => {
+  mocks.send.mockResolvedValue({ data: { status: true } });
+  render(<ApiKeysPage />);
+  expect(screen.getByRole("button", { name: "Create key" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Send verification email" }));
+  await screen.findByRole("status");
+  expect(mocks.send).toHaveBeenCalledWith({ email: "owner@example.com", callbackURL: "/settings/api-keys" });
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/api-keys/key-1", { method: "DELETE" }));
+  fireEvent.click(screen.getByRole("button", { name: "I have verified my email" }));
+  expect(mocks.refetch).toHaveBeenCalled();
+});
+
+it("shows send failures and keeps creation blocked", async () => {
+  mocks.send.mockResolvedValue({ error: { message: "Please try again later" } });
+  render(<ApiKeysPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Send verification email" }));
+  await screen.findByText("Please try again later");
+  expect(screen.getByRole("button", { name: "Create key" })).toBeDisabled();
+});
+
+it("shows invalid verification callbacks after loading keys", async () => {
+  window.history.replaceState(null, "", "/settings/api-keys?error=TOKEN_EXPIRED");
+  render(<ApiKeysPage />);
+  await screen.findByText("Existing key");
+  expect(screen.getByText(/verification link is invalid or expired/)).toBeInTheDocument();
+});
+
+it("allows a verified user to create and copy a key", async () => {
+  mocks.verified = true;
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+  vi.mocked(fetch).mockImplementation(async (_url, options) => new Response(JSON.stringify(
+    options?.method === "POST" ? { api_key: { key: "sk_only-once" } } : { api_keys: [] }
+  ), { status: 200 }));
+  render(<ApiKeysPage />);
+  expect(screen.queryByRole("button", { name: "Send verification email" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Create key" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Create$/ }));
+  await screen.findByText("sk_only-once");
+  fireEvent.click(screen.getByRole("button", { name: "Copy API key" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith("sk_only-once"));
+  expect(toast.success).toHaveBeenCalledWith("Copied to clipboard");
+});
+
+it("fills the new key into MCP client config, never into the assistants' setup", async () => {
+  mocks.verified = true;
+  vi.mocked(fetch).mockImplementation(async (_url, options) => new Response(JSON.stringify(
+    options?.method === "POST" ? { api_key: { key: "sk_only-once" } } : { api_keys: [] }
+  ), { status: 200 }));
+  render(<ApiKeysPage />);
+  // Only the chat assistants show the URL until a key exists.
+  expect(screen.getAllByText("https://mcp.supoclip.com/mcp")).toHaveLength(1);
+  expect(screen.queryByText(/Bearer sk_/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Create key" }));
+  fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Cursor" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Create$/ }));
+  await screen.findByText("sk_only-once");
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/api-keys", expect.objectContaining({ body: JSON.stringify({ name: "Cursor" }) })));
+  const config = JSON.parse(screen.getByText(/"mcpServers"/).textContent ?? "");
+  expect(config.mcpServers.supoclip).toEqual({ url: "https://mcp.supoclip.com/mcp", headers: { Authorization: "Bearer sk_only-once" } });
+  // Chat assistants sign in with OAuth: the new key never reaches their setup or links.
+  // (The open dialog hides the page from the accessibility tree, hence `hidden`.)
+  const assistants = screen.getByRole("region", { name: "Connect Claude, ChatGPT or Grok", hidden: true });
+  expect(assistants.textContent).not.toContain("sk_only-once");
+  for (const link of screen.getAllByRole("link", { hidden: true })) expect(link.getAttribute("href")).not.toContain("sk_only-once");
+
+  // Shown once: closing the dialog forgets the key.
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() => expect(screen.queryByText("sk_only-once")).not.toBeInTheDocument());
+});
+
+it("selects the new key when the clipboard blocks the copy", async () => {
+  mocks.verified = true;
+  const writeText = vi.fn().mockRejectedValue(new DOMException("Clipboard permission denied", "NotAllowedError"));
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+  document.execCommand = vi.fn().mockReturnValue(false);
+  vi.mocked(fetch).mockImplementation(async (_url, options) => new Response(JSON.stringify(
+    options?.method === "POST" ? { api_key: { key: "sk_only-once" } } : { api_keys: [] }
+  ), { status: 200 }));
+  render(<ApiKeysPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Create key" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Create$/ }));
+  const key = await screen.findByText("sk_only-once");
+  fireEvent.click(screen.getByRole("button", { name: "Copy API key" }));
+  await waitFor(() => expect(toast.message).toHaveBeenCalledWith("Clipboard is blocked. The text is selected so you can copy it manually."));
+  expect(writeText).toHaveBeenCalledWith("sk_only-once");
+  expect(document.execCommand).toHaveBeenCalledWith("copy");
+  expect(window.getSelection()?.toString()).toBe("sk_only-once");
+  expect(key.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+});
+
+it("reloads the list after revoking a key", async () => {
+  let revoked = false;
+  vi.mocked(fetch).mockImplementation(async (_url, options) => {
+    if (options?.method === "DELETE") {
+      revoked = true;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ api_keys: [
+      { id: "key-1", name: "Existing key", key_prefix: "sk_test", created_at: null, last_used_at: null, revoked },
+    ] }), { status: 200 });
+  });
+  render(<ApiKeysPage />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+
+  expect(await screen.findByText("Revoked")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
+  expect(vi.mocked(fetch).mock.calls.filter(([url, init]) => url === "/api/api-keys" && !init?.method)).toHaveLength(2);
+});

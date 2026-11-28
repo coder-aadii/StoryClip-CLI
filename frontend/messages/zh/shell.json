@@ -1,0 +1,105 @@
+{
+  "nav": {
+    "create": "创建",
+    "library": "素材库",
+    "social": "社交",
+    "analytics": "数据分析",
+    "agents": "智能体与 API",
+    "settings": "设置",
+    "admin": "管理",
+    "newGeneration": "新建生成",
+    "calendar": "日历"
+  },
+  "search": {
+    "generations": "搜索生成记录",
+    "label": "搜索",
+    "mainNav": "主导航",
+    "mobileNav": "移动端导航",
+    "dialog": "搜索",
+    "placeholder": "搜索生成记录或跳转到…",
+    "inputLabel": "搜索生成记录或跳转到页面",
+    "empty": "没有与“{query}”匹配的结果。"
+  },
+  "palette": {
+    "newHint": "粘贴链接或上传文件",
+    "library": "打开素材库",
+    "social": "社交账号",
+    "socialHint": "连接 YouTube、TikTok 和 Instagram",
+    "analyticsHint": "已发布短片的表现",
+    "agentsHint": "API 密钥与 MCP",
+    "team": "团队与工作区",
+    "teamHint": "管理成员、席位与共享时长",
+    "calendarHint": "所有已排期和已发布的内容"
+  },
+  "usage": {
+    "pickPlan": "选择套餐，开始剪辑",
+    "moreWith": "升级到 {name} 获得更多额度",
+    "left": "本周期剩余 {count} 个",
+    "videosThisPeriod": "本周期的视频",
+    "minutesOf": "{used} / {limit} 分钟",
+    "minutes": "{used} 分钟",
+    "minutesLeft": "本月剩余 {count} 分钟",
+    "minutesThisMonth": "本月视频分钟数",
+    "activateTeam": "开通团队套餐",
+    "addTeamSeats": "增加席位或管理团队"
+  },
+  "user": {
+    "creator": "创作者",
+    "signOut": "退出登录",
+    "signingOut": "正在退出…",
+    "signOutError": "无法退出登录。请重试。"
+  },
+  "theme": {
+    "toggle": "切换浅色/深色主题"
+  },
+  "announcements": {
+    "whatsNew": "新动态",
+    "whatsNewUnread": "新动态，{count, plural, other {# 条未读公告}}",
+    "title": "SupoClip 的新动态",
+    "close": "关闭公告",
+    "popover": "公告",
+    "new": "新"
+  },
+  "feedback": {
+    "title": "发送反馈",
+    "category": "类别",
+    "bug": "错误报告",
+    "feature": "功能建议",
+    "general": "一般反馈",
+    "sales": "销售咨询",
+    "placeholder": "告诉我们你在想什么...",
+    "submit": "提交",
+    "success": "反馈已提交 — 谢谢！",
+    "failed": "反馈提交失败",
+    "error": "出了点问题"
+  },
+  "workspace": {
+    "label": "工作区",
+    "switchAria": "切换工作区",
+    "personal": "个人",
+    "personalSubtitle": "个人工作区",
+    "teamSettings": "团队设置",
+    "createTeam": "创建团队"
+  },
+  "account": {
+    "menu": "账户菜单",
+    "minutesLeft": "剩余 {count} 分钟",
+    "planMinutesLeft": "{plan} · 剩余 {count} 分钟",
+    "seatPaused": "席位已暂停",
+    "usage": "用量",
+    "usageThisMonth": "本月用量",
+    "current": "当前",
+    "planLabel": "{plan} 套餐",
+    "yourLimit": "你的限额",
+    "teamPool": "团队额度",
+    "teamPoolOf": "团队额度 {used} / {limit} 分钟",
+    "teamPoolUsed": "团队额度 {used} 分钟",
+    "seatPausedLong": "管理员已暂停你的席位",
+    "askAdmin": "向管理员申请更多额度",
+    "usageError": "无法加载你的其他工作区。",
+    "billing": "账单与用量",
+    "theme": "主题",
+    "themeLight": "浅色",
+    "themeDark": "深色"
+  }
+}

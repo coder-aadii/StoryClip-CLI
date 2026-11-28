@@ -1,0 +1,538 @@
+{
+  "greeting": {
+    "upLate": "还没睡",
+    "goodMorning": "早上好",
+    "goodAfternoon": "下午好",
+    "goodEvening": "晚上好",
+    "named": "{greeting}，{name}"
+  },
+  "subtitle": "丢进一段长视频，拿回带字幕、可以直接发布的短片。",
+  "errors": {
+    "fonts": "现在无法加载字体。",
+    "notVideo": "这看起来不像视频文件。请试 MP4、MOV、MKV 或 WebM。",
+    "fontType": "自定义字体只支持 .ttf 和 .otf 文件。",
+    "uploadFont": "字体上传失败",
+    "uploadFontRetry": "字体上传失败。请再试一次。",
+    "processVideo": "视频处理失败。请再试一次。",
+    "fileTooLarge": "这个文件有 {size}，超过了 {limit} 的上传上限。请换一个更短的导出或更小的文件。",
+    "api": "API 错误：{status}"
+  },
+  "status": {
+    "uploading": "正在上传视频…",
+    "checkingLength": "正在检查视频时长…",
+    "starting": "正在开始生成…",
+    "working": "处理中…",
+    "uploadingFont": "正在上传…"
+  },
+  "drop": "松开即可上传视频",
+  "readyToUpload": "{size} · 可以上传",
+  "removeFile": "移除文件",
+  "youtubeUrl": "YouTube 链接",
+  "urlPlaceholder": "粘贴 YouTube 链接，或拖入视频文件",
+  "uploadFile": "上传视频文件",
+  "upload": "上传",
+  "defaultTemplate": "默认",
+  "defaultTemplateDescription": "逐字字幕",
+  "captionStyle": "字幕样式",
+  "customize": "自定义",
+  "resetTemplate": "恢复为模板",
+  "font": "字体",
+  "uploadFont": "上传字体",
+  "customFontsPaid": "付费方案可以使用你自己的字体",
+  "searchFonts": "搜索字体",
+  "templateDefault": "模板默认",
+  "noFontMatch": "没有符合搜索的字体",
+  "color": "颜色",
+  "template": "模板",
+  "captionColor": "字幕颜色 {color}",
+  "customColor": "自定义颜色",
+  "customCaptionColor": "自定义字幕颜色",
+  "livePreview": "实时预览",
+  "framing": "构图",
+  "framingOptions": {
+    "vertical": {
+      "label": "自动 9:16",
+      "hint": "根据主体和场景内容自动调整"
+    },
+    "vertical_fit": {
+      "label": "完整画面 9:16",
+      "hint": "在竖屏画布中显示完整画面"
+    },
+    "vertical_pan": {
+      "label": "说话人跟随",
+      "hint": "跟着正在说话的人"
+    },
+    "vertical_split": {
+      "label": "分屏",
+      "hint": "两位说话人上下排列"
+    },
+    "original": {
+      "label": "原始",
+      "hint": "保留源视频比例"
+    }
+  },
+  "captions": "字幕",
+  "noCaptions": "无字幕",
+  "broll": "B-roll 素材",
+  "brollHint": "在说话者提到可展示的事物时，自动插入 Pexels 素材视频",
+  "cleanup": "清理",
+  "composerSettings": {
+    "chip": "设置",
+    "tour": "查看导览",
+    "limits": "上传限制和详情",
+    "reset": "重置所有设置",
+    "on": "开启",
+    "off": "关闭"
+  },
+  "cleanupTitle": "片段清理",
+  "cleanupBody": "渲染时收紧空白，并切掉填充音。",
+  "cleanupMore": "更多选项",
+  "shortenPauses": "缩短长停顿",
+  "shortenPausesHint": "把长于这个时间的静音剪到一次短呼吸",
+  "pauseThreshold": "停顿阈值（毫秒）",
+  "removeFillers": "移除填充词",
+  "removeFillersHint": "“嗯”、“呃”、“啊”和类似的声音",
+  "extraWords": "额外要剪掉的词或短语",
+  "extraWordsPlaceholder": "基本上、真的、说实话",
+  "generate": "生成片段",
+  "limitNote": "{plan}：单个视频最长 {minutes} 分钟，链接或上传均可。每个视频按时长消耗分钟数，开始前会先检查。",
+  "uploadLimits": "上传上限为 {size}。超过 1080p 或 60 fps 的视频会自动缩小，并保持原始比例。",
+  "completionEmails": "完成邮件会遵循你在<settings>设置</settings>中的偏好。",
+  "recent": "最近",
+  "viewLibrary": "查看资料库",
+  "recentEmpty": "你的片段会显示在这里。在上面粘贴链接，生成第一批。",
+  "previewHook": "钩子标题会出现在这里",
+  "previewCaptions": "字幕看起来是这样",
+  "captionSize": {
+    "size": "大小",
+    "templateDefault": "模板默认",
+    "small": "小",
+    "medium": "中",
+    "large": "大"
+  },
+  "nudge": {
+    "refreshesOn": "将于 {date} 重置。",
+    "refreshesNext": "下个月重置。",
+    "startTitle": "一条长视频，一周的短视频。",
+    "startDescription": "方案每月 {price} 起，每月 {length} 视频。你可以先完成所有设置，准备好了再选方案。",
+    "startPerks": {
+      "ai": "AI 挑选最精彩的片段并排名",
+      "captions": "逐词同步字幕，9:16 画幅",
+      "formats": "适配 TikTok、Reels 和 Shorts"
+    },
+    "startAction": "开始剪辑",
+    "startFootnote": "可随时取消",
+    "limitTitle": "你本月已用完 {length} 视频",
+    "limitWithPlan": "{refreshes} 或者继续使用 {plan}：每月 {limit} 视频。",
+    "limitAppStore": "{refreshes}你可以在 SupoClip iOS 应用里更改方案。",
+    "getPlan": "获取 {plan}",
+    "remaining": "本月剩余 {count} 分钟视频",
+    "nearWithPlan": "{refreshes} 需要更多额度？{plan} 每月提供 {limit} 视频。",
+    "upgrade": "升级",
+    "limitTitleAll": "你本月的视频分钟数已用完",
+    "teamStartTitle": "{team} 尚未开通团队套餐",
+    "teamStartOwner": "在团队设置中开通后，团队所有成员都可以制作切片。",
+    "teamStartMember": "请联系团队所有者开通团队套餐。",
+    "teamSettings": "团队设置",
+    "memberPausedTitle": "你的席位已暂停生成新视频",
+    "memberPausedBody": "团队管理员暂停了你的视频生成。请联系他们重新开启。",
+    "teamLimitOwner": "{refreshes} 或者增加席位以获得更多共享时长。",
+    "teamLimitMember": "{refreshes} 或者请团队所有者增加席位。",
+    "manageSeats": "增加席位",
+    "memberLimitTitle": "你本月的 {limit} 分钟已用完",
+    "memberLimitBody": "{refreshes} 团队管理员可以提高你的额度。",
+    "memberNearBody": "{refreshes} 团队管理员将你的额度设为每月 {limit} 分钟。"
+  },
+  "clipLength": {
+    "picker": "片段时长",
+    "title": "片段时长",
+    "auto": "自动时长",
+    "short": "短（15–30秒）",
+    "medium": "中（30–60秒）",
+    "long": "长（1–2分钟）",
+    "hint": "目标时长为移除停顿和语气词之前的时长。您的选择将保存为默认值。",
+    "saveError": "无法保存默认值。此视频仍会使用您的选择。"
+  },
+  "whatToMake": "你想做什么？",
+  "workflows": {
+    "highlights": {
+      "label": "精彩片段",
+      "hint": "可以单独成片的高光时刻"
+    },
+    "series": {
+      "label": "系列",
+      "hint": "前后衔接的多集，讲完整个故事"
+    },
+    "topic": {
+      "label": "话题",
+      "hint": "关于某个话题的所有精彩时刻"
+    },
+    "recap": {
+      "label": "回顾",
+      "hint": "一段短视频，讲清主要观点"
+    },
+    "trailer": {
+      "label": "预告",
+      "hint": "一段短预告，让人想看完整视频"
+    }
+  },
+  "subtitleByWorkflow": {
+    "highlights": "丢进一段长视频，拿回带字幕、可以直接发布的短片。",
+    "series": "丢进一段长视频，拿回一套编好号、让人一集接一集看下去的系列。",
+    "topic": "丢进一段长视频，拿回所有关于你这个话题的精彩时刻。",
+    "recap": "丢进一段长视频，拿回一段讲清主要观点的短视频。",
+    "trailer": "丢进一段长视频，拿回一段让人想看完整版的短预告。"
+  },
+  "generateByWorkflow": {
+    "highlights": "生成片段",
+    "series": "生成系列",
+    "topic": "查找精彩时刻",
+    "recap": "制作回顾",
+    "trailer": "制作预告"
+  },
+  "topic": {
+    "placeholder": "什么话题？例如：创业",
+    "required": "请输入要查找的话题。",
+    "label": "话题"
+  },
+  "parts": {
+    "picker": "集数：{value}",
+    "title": "集数",
+    "auto": "自动",
+    "autoHint": "根据故事内容决定分几集",
+    "count": "{count, plural, other {# 集}}"
+  },
+  "lengthByWorkflow": {
+    "series": {
+      "picker": "每集时长",
+      "auto": "自动（1–1.5分钟）",
+      "short": "短（30–60秒）",
+      "medium": "中（45–90秒）",
+      "long": "长（1.5–3分钟）",
+      "hint": "每集在移除停顿和语气词之前的时长。"
+    },
+    "recap": {
+      "picker": "回顾时长",
+      "auto": "自动（按视频长度）",
+      "short": "短（约45秒）",
+      "medium": "中（约75秒）",
+      "long": "长（约2分钟）",
+      "hint": "回顾的总时长。"
+    },
+    "trailer": {
+      "picker": "预告时长",
+      "auto": "自动（约30秒）",
+      "short": "短（约20秒）",
+      "medium": "中（约40秒）",
+      "long": "长（约1分钟）",
+      "hint": "预告的总时长。"
+    }
+  },
+  "instructions": {
+    "chip": "要求",
+    "remove": "移除要求",
+    "counter": "{used}/{max}",
+    "placeholder": {
+      "highlights": "有什么特别要求？例如：只要搞笑的部分，跳过赞助内容",
+      "series": "有什么特别要求？例如：重点讲第一次创业的故事",
+      "topic": "有什么特别要求？例如：只要实用建议，不要个人故事",
+      "recap": "有什么特别要求？例如：重点放在理财建议上",
+      "trailer": "有什么特别要求？例如：保持神秘感，突出冲突"
+    }
+  },
+  "urlRescue": {
+    "moved": "已将“{text}”移到要求里。",
+    "undo": "撤销",
+    "notALink": "这看起来是一条要求，而不是链接。请在这里粘贴视频链接，这段文字会作为要求保留。",
+    "moveToInstructions": "移到要求"
+  },
+  "suggestWorkflow": {
+    "series": "改做系列？",
+    "seriesCount": "改做 {count} 集系列？",
+    "topic": "改为查找所有关于“{topic}”的片段？",
+    "recap": "改做回顾？",
+    "trailer": "改做预告？"
+  },
+  "tooShort": {
+    "series": "这个视频只有 {duration}。系列至少需要 2 分钟，这里更适合用精彩片段。",
+    "recap": "这个视频只有 {duration}。回顾适用于 3 分钟以上的视频。",
+    "trailer": "这个视频只有 {duration}。预告适用于 3 分钟以上的视频。",
+    "topic": "这个视频只有 {duration}。话题查找至少需要 1 分钟。",
+    "useHighlights": "改用精彩片段"
+  },
+  "workflowErrors": {
+    "INVALID_WORKFLOW": "不支持这个选项。",
+    "INVALID_WORKFLOW_OPTIONS": "不支持这些设置。",
+    "TOPIC_REQUIRED": "请输入要查找的话题。",
+    "TOPIC_TOO_LONG": "话题请控制在 120 个字符以内。",
+    "INVALID_PART_COUNT": "请选择自动，或 2 到 10 集。",
+    "INSTRUCTIONS_TOO_LONG": "要求请控制在 500 个字符以内。",
+    "SOURCE_TOO_SHORT_FOR_SERIES": "这个视频太短，拆不成系列。试试精彩片段吧。",
+    "TOO_MANY_PARTS": "这个视频最多只能分成 {max_parts} 集。请减少集数或选择自动。",
+    "SOURCE_TOO_SHORT_FOR_RECAP": "这个视频本来就很短。回顾适用于 3 分钟以上的视频。",
+    "SOURCE_TOO_SHORT_FOR_TRAILER": "预告适用于 3 分钟以上的视频。",
+    "SOURCE_TOO_SHORT_FOR_TOPIC": "这个视频太短，没法按话题查找。试试精彩片段吧。",
+    "WORKFLOW_NOT_AVAILABLE": "你的账户暂时还不能使用这个选项。",
+    "INVALID_WORKFLOW_SETTING": "不支持该高级设置。"
+  },
+  "palette": {
+    "series": "新建系列",
+    "topic": "新建话题查找",
+    "recap": "新建回顾",
+    "trailer": "新建预告"
+  },
+  "advanced": {
+    "chip": "高级",
+    "title": "高级",
+    "body": "默认设置适合大多数视频。只有在确有需要时才更改。",
+    "auto": "自动",
+    "reset": "恢复默认设置",
+    "outOfRange": "请输入 {min} 到 {max} 之间的整数。",
+    "settings": {
+      "hook_title": {
+        "label": "视频上的标题",
+        "hint": "在开头几秒显示标题。"
+      },
+      "junction_style": {
+        "label": "片段之间的剪辑",
+        "hint": "片段的衔接方式。"
+      },
+      "cold_open": {
+        "label": "冷开场",
+        "hint": "第 1 集先播放系列后面的一句话，再回到开头。"
+      },
+      "part_labels": {
+        "label": "标题中的集数",
+        "hint": "每个标题以“第 2 集：”开头。"
+      },
+      "endings": {
+        "label": "每集的结尾",
+        "hint": "每集在哪里结束。"
+      },
+      "coverage": {
+        "label": "素材来源",
+        "hint": "成品覆盖视频的多少内容。"
+      },
+      "max_clips": {
+        "label": "片段数量",
+        "hint": "最多生成多少个片段。"
+      },
+      "match": {
+        "label": "主题匹配",
+        "hint": "视频只是接近你的主题时如何处理。"
+      },
+      "on_screen_points": {
+        "label": "在画面上显示每个要点",
+        "hint": "每个要点开始时用文字标出。"
+      },
+      "target_seconds": {
+        "label": "时长（秒）",
+        "hint": "替代上方选择的时长。"
+      },
+      "max_points": {
+        "label": "最多要点数",
+        "hint": "要点越少，每个要点的空间越大，回顾也可能更短。"
+      },
+      "spoilers": {
+        "label": "剧透",
+        "hint": "预告片是否可以使用透露结局的句子。"
+      },
+      "ending": {
+        "label": "最后一句",
+        "hint": "预告片以什么结尾。"
+      }
+    },
+    "choices": {
+      "auto": "自动",
+      "soft": "柔和过渡",
+      "hard": "硬切",
+      "cliffhanger": "让人想看下一集",
+      "natural": "把话说完",
+      "best_chapters": "最好的章节",
+      "start_to_finish": "从头按顺序",
+      "whole_video": "整个视频",
+      "best_moments": "只要最精彩的时刻",
+      "broad": "允许相近的匹配",
+      "strict": "只要完全相符的主题",
+      "relaxed": "允许",
+      "question": "一个问题"
+    }
+  },
+  "edits": {
+    "section": "剪辑",
+    "title": "剪辑强度",
+    "body": "AI 标出关键时刻，你决定每一下有多猛。",
+    "intensity": {
+      "off": {
+        "label": "关闭",
+        "hint": "干净剪切，不加任何东西"
+      },
+      "subtle": {
+        "label": "轻微",
+        "hint": "偶尔重新取景，轻柔背景音乐"
+      },
+      "bold": {
+        "label": "强烈",
+        "hint": "关键时刻推近，切点配重击"
+      },
+      "max": {
+        "label": "极致",
+        "hint": "快速重新取景，更响的重击和音乐"
+      }
+    },
+    "offHint": "开启剪辑效果，在重要时刻加入重新取景、音效和音乐。",
+    "groups": {
+      "sound": "声音",
+      "motion": "动态",
+      "retention": "留住观众"
+    },
+    "options": {
+      "sfx": {
+        "label": "音效",
+        "hint": "切点和图形出现时的短促重击和弹出声"
+      },
+      "music": {
+        "label": "音乐",
+        "hint": "人声出现时自动压低的背景音乐"
+      },
+      "musicMood": "音乐风格",
+      "zooms": {
+        "label": "缩放",
+        "hint": "关键时刻重新取景和短推近"
+      },
+      "shake": {
+        "label": "镜头抖动",
+        "hint": "在最猛的时刻震一下"
+      },
+      "transitions": {
+        "label": "转场",
+        "hint": "片段切换处偶尔一闪"
+      },
+      "speed": {
+        "label": "变速和定格",
+        "hint": "铺垫加速，揭晓前定格"
+      },
+      "censor": {
+        "label": "脏话",
+        "hint": "如何遮盖脏话"
+      },
+      "wait_for_it": {
+        "label": "“等一下”贴纸",
+        "hint": "预告即将到来的高潮"
+      },
+      "progress_bar": {
+        "label": "进度条",
+        "hint": "底部的一条细进度条"
+      },
+      "loop_ending": {
+        "label": "循环结尾",
+        "hint": "结尾渐变回开头，循环播放更顺滑"
+      },
+      "reactions": {
+        "label": "GIF 反应",
+        "hint": "在最好笑的时刻加一个反应 GIF"
+      }
+    },
+    "moods": {
+      "auto": "匹配视频",
+      "hype": "燃",
+      "chill": "轻松",
+      "dramatic": "戏剧",
+      "funny": "搞笑",
+      "inspiring": "励志",
+      "dark": "暗黑",
+      "aggressive": "激烈"
+    },
+    "censor": {
+      "off": "保持原样",
+      "bleep": "哔声",
+      "bleep_bar": "哔声并遮住嘴",
+      "bleep_pixelate": "哔声并给嘴打码"
+    },
+    "fineTune": "微调"
+  },
+  "animatedCaptions": {
+    "title": "动画",
+    "demoLine": "我们的 收入 在 短短 一年 里 增长了 300%",
+    "demoSticker": "不会吧！",
+    "needsFace": "画面中有人脸时效果最好",
+    "templates": {
+      "marker_circle": {
+        "name": "记号笔圈",
+        "description": "在关键词上手绘圆圈、下划线和箭头"
+      },
+      "emoji_drop": {
+        "name": "表情掉落",
+        "description": "文字随说话逐词出现，重要时刻下方出现表情"
+      },
+      "slam": {
+        "name": "重击",
+        "description": "巨大的关键词砸到屏幕上"
+      },
+      "behind_head": {
+        "name": "头后文字",
+        "description": "说话人身后出现一个巨大的词"
+      },
+      "stat_counter": {
+        "name": "数字计数",
+        "description": "说出的数字向上计数并盖章定格"
+      },
+      "kinetic_stack": {
+        "name": "动态堆叠",
+        "description": "开场钩子以粗体逐行堆叠"
+      },
+      "decode_glitch": {
+        "name": "解码故障",
+        "description": "字母乱码后逐个锁定"
+      },
+      "highlighter_swipe": {
+        "name": "荧光笔",
+        "description": "文字随说话逐词出现，关键词放进实色方框"
+      },
+      "face_doodles": {
+        "name": "脸部涂鸦",
+        "description": "跟随说话人脸部的闪光、恶魔角和箭头"
+      }
+    }
+  },
+  "sourceRange": {
+    "start": "开始",
+    "end": "结束",
+    "format": "请使用 h:mm:ss 格式，例如 1:30:00",
+    "first": "前 {minutes} 分钟",
+    "last": "最后 {minutes} 分钟",
+    "selected": "将剪辑 {length}，消耗 {minutes} 分钟。",
+    "problems": {
+      "invalid": "请输入开始和结束时间。",
+      "order": "结束时间必须晚于开始时间。",
+      "outOfBounds": "请选择 0:00 到 {duration} 之间的时间。",
+      "tooShort": "至少选择 {min} 分钟。",
+      "tooLong": "最多选择 {max} 分钟。"
+    }
+  },
+  "tooLongPanel": {
+    "title": "这个 {runtime} 的视频超过了你 {minutes} 分钟的上限",
+    "body": "选择最长 {minutes} 分钟的一段，我们只剪辑这一段。只有这一段计入你的分钟数。",
+    "bodyUpgrade": "选择最长 {minutes} 分钟的一段，我们只剪辑这一段；或升级到 {plan}，单个视频最长 {nextMinutes} 分钟。只有你选的这一段计入分钟数。",
+    "submit": "剪辑这一段",
+    "cancel": "换一个视频",
+    "label": "要剪辑的视频片段",
+    "upgradeTo": "升级到 {plan}（单个视频最长 {minutes} 分钟）",
+    "checkoutFailed": "结账页面没有打开，请稍后再试。"
+  },
+  "lengthErrors": {
+    "durationUnavailable": {
+      "title": "我们无法读取这个视频的时长",
+      "body": "如果是仍在进行的直播，请等直播结束后粘贴完整录像。如果已经结束，请一分钟后再试。未消耗分钟数。"
+    },
+    "tooLongNoRange": {
+      "title": "这个视频超过了你 {minutes} 分钟的上限",
+      "body": "它比你的方案允许的更长，并且这里无法选择其中一段。请使用完整录像或更短的视频。未消耗分钟数。"
+    }
+  },
+  "askAgentInstead": "还是问问智能体",
+  "creatorTag": "Creator",
+  "agentLapsed": "你的 Agent 对话都已保存。",
+  "agentTrialEnded": "你的免费 Agent 消息已用完。",
+  "agentBackWithCreator": "升级 Creator 继续使用"
+}

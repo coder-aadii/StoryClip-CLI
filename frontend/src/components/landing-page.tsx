@@ -1,0 +1,873 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import Link from "next/link";
+import Image from "next/image";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  Clock,
+  ExternalLink,
+  Github,
+  Info,
+  Menu,
+  Minus,
+  Plus,
+  Upload,
+  X,
+} from "lucide-react";
+
+import { Announcements } from "@/components/announcements";
+import { BillingIntervalToggle, ComingSoonTag, useBillingPlanText } from "@/components/billing/upgrade-prompt";
+import { FaqSection } from "@/components/landing/faq-section";
+import { DynamicEditsSection } from "@/components/landing/dynamic-edits-section";
+import { EditorSection } from "@/components/landing/editor-section";
+import { FeatureBento } from "@/components/landing/feature-bento";
+import { HeroStage, SourceStickers } from "@/components/landing/hero-stage";
+import { ProductFilm } from "@/components/landing/product-film";
+import { PublishSection } from "@/components/landing/publish-section";
+import { Reveal, SectionHeading } from "@/components/landing/reveal";
+import { CreatorOfferBanner } from "@/components/marketing/creator-offer-banner";
+import { SiteFooter } from "@/components/marketing/site-footer";
+import { SocialProviderIcon } from "@/components/social-provider-icon";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { VIDEO_SOURCE_LABELS, VideoSourceIcon } from "@/components/video-source-icon";
+import { catalogKey } from "@/i18n/config";
+import { isLandingOnlyModeEnabled } from "@/lib/app-flags";
+import {
+  annualFullPrice,
+  annualMonthlyEquivalent,
+  annualMonthsFree,
+  billingPlanMessageKey,
+  calculateTeamPricing,
+  formatCurrencyAmount,
+  getPublicBillingPlans,
+  getTeamBillingConfig,
+  MAX_TEAM_SEATS,
+  planPrice,
+  socialPublishingStage,
+  type BillingInterval,
+} from "@/lib/billing-plans";
+import {
+  SELF_HOSTING_GUIDE_HREF,
+  getMarketingLink,
+  type MarketingLink,
+} from "@/lib/marketing-links";
+import { contentLangAttr } from "@/lib/localized-guides";
+import { APP_STORE_URL, DISCORD_COMMUNITY_URL, GITHUB_URL, HOSTED_APP_URL, PRODUCT_HUNT_BADGE_URL, PRODUCT_HUNT_URL, SOURCE_LICENSE_URL } from "@/lib/site";
+import { cn } from "@/lib/utils";
+
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+const PRICING_EXAMPLE_VIDEO_MINUTES = 30;
+
+const NAV_LINKS = [
+  { href: "#features", key: "features" },
+  { href: "#editor", key: "editor" },
+  { href: "#publish", key: "publishing" },
+  { href: "#pricing", key: "pricing" },
+  { href: "#open-source", key: "openSource" },
+  { href: "/examples", key: "examples" },
+  { href: "/faq", key: "faq" },
+  { href: "/blog", key: "blog" },
+  { href: "/affiliate", key: "affiliate" },
+] as const;
+
+// Featured on the landing page; the footer links every marketing page.
+const SEO_RESOURCES = [
+  "/blog/podcast-to-shorts",
+  "/blog/find-best-moments-in-video",
+  "/ai-video-clipper",
+  "/youtube-shorts-clipper",
+  "/open-source-video-clipper",
+  "/blog/twitch-vod-to-shorts",
+].map((href) => getMarketingLink(href)).filter((link): link is MarketingLink => Boolean(link));
+
+function getPlans(
+  t: Translate,
+  tCommon: Translate,
+  interval: BillingInterval,
+  planText: ReturnType<typeof useBillingPlanText>,
+) {
+  // The landing page states which platforms scheduling reaches, so it swaps the
+  // generic billing line for YouTube + TikTok (live) and Instagram (soon).
+  const showScheduling = socialPublishingStage() !== "off";
+  const genericScheduling = planText.t("highlights.scheduling");
+  return [
+    {
+      id: "selfHost",
+      name: tCommon("plans.selfHost"),
+      price: "$0",
+      originalPrice: null as string | null,
+      period: t("pricing.period.forever"),
+      note: null as string | null,
+      soon: null as string | null,
+      usageExample: null as string | null,
+      limits: null as PlanLimits | null,
+      description: t("pricing.selfHost.description"),
+      features: [
+        t("pricing.selfHost.features.crop"),
+        t("pricing.selfHost.features.subtitles"),
+        t("pricing.selfHost.features.virality"),
+        t("pricing.selfHost.features.exports"),
+        t("pricing.selfHost.features.source"),
+      ],
+      cta: t("pricing.selfHost.cta"),
+      ctaHref: GITHUB_URL,
+      highlighted: false,
+    },
+    ...getPublicBillingPlans().map((plan) => {
+      const exampleVideos = Math.floor(plan.minuteLimit / PRICING_EXAMPLE_VIDEO_MINUTES);
+      const scheduling = plan.scheduling && showScheduling;
+      return {
+        id: plan.id,
+        name: tCommon(`plans.${billingPlanMessageKey(plan.id)}`),
+        price: `$${planPrice(plan, interval)}`,
+        originalPrice: interval === "year" && annualMonthsFree(plan) > 0 ? `$${annualFullPrice(plan)}` : null,
+        period: interval === "year" ? t("pricing.period.year") : t("pricing.period.month"),
+        note: interval === "year" ? t("pricing.billedYearly", { price: annualMonthlyEquivalent(plan) }) : null,
+        soon: scheduling ? t("pricing.schedulingSoon") : null,
+        usageExample:
+          exampleVideos > 0
+            ? t("pricing.usageExample.videos", { count: exampleVideos })
+            : null,
+        description: t(`pricing.${plan.id}.description`),
+        limits: { monthly: planText.formatRuntime(plan.minuteLimit * 60), perVideo: planText.formatRuntime(plan.youtubeMaxMinutes * 60) },
+        features: [
+          // Video a month and the per-video length are in the limits block above the list.
+          ...planText.highlights(plan).filter((line) => line !== genericScheduling && line !== planText.perVideo(plan) && line !== planText.monthly(plan)),
+          // Creator schedules; plans without scheduling can still post right away.
+          ...(scheduling ? [t("pricing.schedulingPlatforms")] : showScheduling ? [t("pricing.publishPlatforms")] : []),
+          t("pricing.hosted.tracking"),
+          t("pricing.hosted.exports"),
+        ],
+        cta: t(`pricing.${plan.id}.cta`),
+        ctaHref: "",
+        highlighted: plan.highlighted,
+      };
+    }),
+  ];
+}
+
+type PlanLimits = { monthly: string; perVideo: string };
+
+/** Video a month and the longest single video: the two limits people run into, before the feature list. */
+function PlanLimitsBlock({ limits, note, className }: { limits: PlanLimits; note?: string | null; className?: string }) {
+  const t = useTranslations("marketing");
+  return (
+    <dl className={cn("mt-6 divide-y rounded-xl border text-sm", className)} data-testid="plan-limits">
+      {([["monthly", limits.monthly], ["perVideo", limits.perVideo]] as const).map(([key, value]) => (
+        <div key={key} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+          <dt className="flex items-center text-muted-foreground">
+            {t(`pricing.limits.${key}`)}
+            {key === "monthly" && note && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={note}
+                    className="ml-1 inline-flex rounded-full p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Info className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  sideOffset={6}
+                  // Light so it stands out on the dark Pro card too.
+                  className="max-w-60 bg-background text-foreground shadow-lg ring-1 ring-border [&_svg]:bg-background [&_svg]:fill-background"
+                >
+                  {note}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </dt>
+          <dd className="shrink-0 font-display font-bold tracking-tight tabular-nums">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function PrimaryCta({ authEnabled, label, hostedLabel, className }: {
+  authEnabled: boolean;
+  label: string;
+  hostedLabel: string;
+  className?: string;
+}) {
+  return authEnabled ? (
+    <Button asChild size="lg" className={cn("h-12 rounded-full px-7 text-sm", className)}>
+      <Link href="/sign-up">
+        {label}
+        <ArrowRight className="size-4" />
+      </Link>
+    </Button>
+  ) : (
+    <Button asChild size="lg" className={cn("h-12 rounded-full px-7 text-sm", className)}>
+      <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
+        {hostedLabel}
+        <ExternalLink className="size-4" />
+      </a>
+    </Button>
+  );
+}
+
+export default function LandingPage() {
+  const locale = useLocale();
+  const t = useTranslations("marketing");
+  const tCommon = useTranslations("common");
+  const planText = useBillingPlanText();
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
+  const teamConfig = getTeamBillingConfig();
+  const [teamSeats, setTeamSeats] = useState<number>(teamConfig.includedSeats);
+  const teamPricing = calculateTeamPricing(teamSeats, billingInterval, teamConfig);
+  const plans = getPlans(t, tCommon, billingInterval, planText);
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const authEnabled = !isLandingOnlyModeEnabled;
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 24);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      {authEnabled && <CreatorOfferBanner />}
+
+      {/* ─── NAV ─── */}
+      <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3">
+        <nav
+          className={cn(
+            "mx-auto flex h-14 max-w-6xl items-center justify-between rounded-full border pl-4 pr-2 transition-all duration-300",
+            scrolled || mobileNavOpen
+              ? "border-border bg-background/80 shadow-[0_8px_30px_-12px_oklch(0.2_0.01_50/0.25)] backdrop-blur-xl"
+              : "border-transparent bg-transparent",
+          )}
+        >
+          <Link href="/" className="flex items-center gap-2">
+            <Image src="/logo.png" alt="SupoClip" width={24} height={24} className="rounded-md dark:invert" />
+            <span className="font-display text-[17px] font-bold tracking-tight">SupoClip</span>
+          </Link>
+
+          <div className="hidden items-center gap-1 xl:flex">
+            {NAV_LINKS.map(({ href, key }) => {
+              const className =
+                "whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+              return href.startsWith("#") ? (
+                <a key={key} href={href} className={className}>{t(`nav.${key}`)}</a>
+              ) : (
+                <Link key={key} href={href} className={className}>{t(`nav.${key}`)}</Link>
+              );
+            })}
+          </div>
+
+          <div className="hidden items-center gap-1 xl:flex">
+            {authEnabled ? (
+              <>
+                <Button asChild variant="ghost" size="sm" className="rounded-full">
+                  <Link href="/sign-in">{t("nav.signIn")}</Link>
+                </Button>
+                <Button asChild size="sm" className="rounded-full px-4">
+                  <Link href="/sign-up">{t("nav.getStarted")}</Link>
+                </Button>
+              </>
+            ) : (
+              <Button asChild size="sm" className="rounded-full px-4">
+                <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
+                  {t("nav.openHosted")}
+                  <ExternalLink className="size-3.5" />
+                </a>
+              </Button>
+            )}
+          </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileNavOpen((open) => !open)}
+            className="rounded-full xl:hidden"
+            aria-label={t("nav.toggleMenu")}
+            aria-expanded={mobileNavOpen}
+          >
+            {mobileNavOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+          </Button>
+        </nav>
+
+        {mobileNavOpen && (
+          <div className="animate-rise mx-auto mt-2 max-w-6xl rounded-3xl border bg-background/95 p-3 shadow-lg backdrop-blur-xl xl:hidden">
+            {NAV_LINKS.map(({ href, key }) => {
+              const className =
+                "block rounded-2xl px-4 py-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+              return href.startsWith("#") ? (
+                <a key={key} href={href} onClick={() => setMobileNavOpen(false)} className={className}>{t(`nav.${key}`)}</a>
+              ) : (
+                <Link key={key} href={href} onClick={() => setMobileNavOpen(false)} className={className}>{t(`nav.${key}`)}</Link>
+              );
+            })}
+            <div className="mt-2 grid grid-cols-2 gap-2 border-t pt-3">
+              {authEnabled ? (
+                <>
+                  <Button asChild variant="outline" className="rounded-full">
+                    <Link href="/sign-in" onClick={() => setMobileNavOpen(false)}>{t("nav.signIn")}</Link>
+                  </Button>
+                  <Button asChild className="rounded-full">
+                    <Link href="/sign-up" onClick={() => setMobileNavOpen(false)}>{t("nav.getStarted")}</Link>
+                  </Button>
+                </>
+              ) : (
+                <Button asChild className="col-span-2 rounded-full">
+                  <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
+                    {t("nav.openHosted")}
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* ─── HERO ─── */}
+      <section className="relative overflow-hidden pb-20 pt-32 md:pb-28 md:pt-40">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:radial-gradient(circle_at_1px_1px,currentColor_1px,transparent_0)] [background-size:28px_28px] [mask-image:linear-gradient(to_bottom,black,transparent_70%)]"
+        />
+
+        <div className="relative mx-auto max-w-6xl px-6">
+          <div className="mx-auto max-w-4xl text-center">
+            <div
+              className="mb-8 flex flex-wrap items-center justify-center gap-2"
+              style={{ animation: "landing-fade-in-up 0.7s ease-out both" }}
+            >
+              <Announcements landing />
+            </div>
+
+            <div style={{ animation: "landing-fade-in-up 0.7s ease-out 0.04s both" }}>
+              <SourceStickers className="mb-8" />
+            </div>
+
+            <h1
+              className="font-display text-[2.75rem] font-bold leading-[0.98] tracking-[-0.035em] text-balance sm:text-6xl lg:text-[5.5rem]"
+              style={{ animation: "landing-fade-in-up 0.7s ease-out 0.08s both" }}
+            >
+              {t("hero.titleLine1")}
+              <br />
+              <span className="text-muted-foreground/70">{t("hero.titleLine2")}</span>
+            </h1>
+
+            <p
+              className="mx-auto mt-7 max-w-2xl text-base leading-relaxed text-muted-foreground text-pretty sm:text-lg"
+              style={{ animation: "landing-fade-in-up 0.7s ease-out 0.16s both" }}
+            >
+              {t("hero.body")}
+            </p>
+
+            <div
+              className="mt-9 flex flex-wrap items-center justify-center gap-3"
+              style={{ animation: "landing-fade-in-up 0.7s ease-out 0.24s both" }}
+            >
+              <PrimaryCta authEnabled={authEnabled} label={t("hero.startClipping")} hostedLabel={t("hero.useHosted")} />
+              <Button asChild variant="outline" size="lg" className="h-12 rounded-full bg-background px-7 text-sm">
+                <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+                  <Github className="size-4" />
+                  {t("hero.viewSource")}
+                </a>
+              </Button>
+            </div>
+            <p
+              className="mt-4 text-xs text-muted-foreground"
+              style={{ animation: "landing-fade-in-up 0.7s ease-out 0.3s both" }}
+            >
+              {t("hero.badge")}
+            </p>
+          </div>
+
+          <div className="mt-16 md:mt-20" style={{ animation: "landing-fade-in-up 0.9s ease-out 0.35s both" }}>
+            <HeroStage />
+          </div>
+
+          {/* Where clips come from and where they go */}
+          <Reveal className="mx-auto mt-12 flex max-w-5xl flex-col items-center justify-center gap-x-8 gap-y-4 text-sm text-muted-foreground lg:flex-row">
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <span>{t("hero.sources.label")}</span>
+              {(["youtube", "twitch", "kick"] as const).map((source) => (
+                <span key={source} className="flex items-center gap-1.5 text-foreground/80">
+                  <VideoSourceIcon source={source} className="size-4" aria-hidden />
+                  {VIDEO_SOURCE_LABELS[source]}
+                </span>
+              ))}
+              <span className="flex items-center gap-1.5 text-foreground/80">
+                <Upload className="size-4" />
+                {t("hero.sources.upload")}
+              </span>
+            </div>
+            <span className="hidden h-5 w-px bg-border lg:block" />
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <span>{t("hero.publishTo")}</span>
+              {(["youtube", "tiktok"] as const).map((provider) => (
+                <span key={provider} className="flex items-center gap-1.5 text-foreground/80">
+                  <SocialProviderIcon provider={provider} className="size-4" />
+                  {t(`publish.platforms.${provider}`)}
+                </span>
+              ))}
+              <span className="flex flex-wrap items-center gap-1.5 opacity-60">
+                <SocialProviderIcon provider="instagram" className="size-4" />
+                {t("publish.platforms.instagramShort")}
+                <ComingSoonTag />
+              </span>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS ─── */}
+      <section id="how-it-works" className="scroll-mt-24 border-y bg-canvas py-24 md:py-32">
+        <div className="mx-auto max-w-6xl px-6">
+          <SectionHeading eyebrow={t("steps.eyebrow")} title={t("steps.title")} align="left" />
+          <Reveal className="mt-14">
+            <ProductFilm />
+          </Reveal>
+        </div>
+      </section>
+
+      <FeatureBento />
+
+      <DynamicEditsSection />
+
+      <EditorSection />
+
+      <PublishSection />
+
+      {/* ─── PRICING ─── */}
+      <section id="pricing" className="scroll-mt-24 py-24 md:py-32">
+        <div className="mx-auto max-w-6xl px-6">
+          <SectionHeading
+            eyebrow={t("nav.pricing")}
+            title={t("pricing.title")}
+            body={t("pricing.body", { price: getPublicBillingPlans()[0]?.priceMonthly ?? "9.99" })}
+          />
+          <Reveal className="mt-8 flex justify-center">
+            <BillingIntervalToggle
+              className="rounded-full bg-background [&_button]:rounded-full"
+              value={billingInterval}
+              onChange={setBillingInterval}
+              plan={getPublicBillingPlans()[0]}
+            />
+          </Reveal>
+
+          <div className="mx-auto mt-14 grid max-w-6xl items-stretch gap-4 lg:grid-cols-3">
+            {plans.map((plan, i) => (
+              <Reveal key={plan.id} delay={i * 0.08} className="h-full">
+                <div
+                  className={cn(
+                    "relative flex h-full flex-col rounded-[26px] border p-7",
+                    plan.highlighted
+                      ? "dark bg-background text-foreground shadow-2xl"
+                      : "bg-card",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-display text-xl font-bold tracking-tight">{plan.name}</h3>
+                    {plan.highlighted && (
+                      <span className="rounded-full border px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {t("pricing.popular")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-sm text-muted-foreground lg:min-h-10">{plan.description}</p>
+
+                  <div className="mt-5 @container">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      {plan.originalPrice && (
+                        <span className="text-lg text-muted-foreground line-through">{plan.originalPrice}</span>
+                      )}
+                      <span className="font-display max-w-full whitespace-nowrap text-[clamp(1.75rem,16cqi,3rem)] font-bold tracking-tight leading-none">
+                        {plan.price}
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">{plan.period}</span>
+                    </div>
+                    {plan.note && <p className="mt-1 text-xs text-muted-foreground">{plan.note}</p>}
+                  </div>
+
+                  {plan.limits && <PlanLimitsBlock limits={plan.limits} note={plan.usageExample} />}
+
+                  <ul className="mt-7 flex-1 space-y-3 border-t pt-7">
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-3 text-sm">
+                        <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        {feature}
+                      </li>
+                    ))}
+                    {plan.soon && (
+                      <li className="flex items-start gap-3 text-sm text-muted-foreground">
+                        <Clock className="mt-0.5 size-4 shrink-0" />
+                        <span>
+                          {plan.soon} <ComingSoonTag />
+                        </span>
+                      </li>
+                    )}
+                  </ul>
+
+                  <div className="mt-6">
+                    {plan.ctaHref ? (
+                      <div className="flex flex-col gap-3">
+                        <p className="text-xs leading-relaxed text-muted-foreground">{t("pricing.selfHost.setup")}</p>
+                        <Button asChild variant="outline" size="lg" className="h-11 w-full rounded-full text-sm">
+                          <Link href={SELF_HOSTING_GUIDE_HREF}>
+                            {t(`links.${catalogKey(SELF_HOSTING_GUIDE_HREF)}.label`)}
+                            <ArrowRight className="size-4" />
+                          </Link>
+                        </Button>
+                        <a
+                          href={plan.ctaHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                        >
+                          <Github className="size-3.5" />
+                          {plan.cta}
+                        </a>
+                      </div>
+                    ) : authEnabled ? (
+                      <Button asChild size="lg" variant={plan.highlighted ? "default" : "outline"} className="upgrade-cta h-11 w-full rounded-full text-sm">
+                        <Link href="/sign-up">
+                          {plan.cta}
+                          <ArrowRight className="size-4" />
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button asChild size="lg" variant={plan.highlighted ? "default" : "outline"} className="h-11 w-full rounded-full text-sm">
+                        <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
+                          {t("hero.useHosted")}
+                          <ExternalLink className="size-4" />
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          {/* Team: one wide card under the individual plans. Below lg the columns stack: pricing, details, button. */}
+          <Reveal delay={plans.length * 0.08} className="mx-auto mt-4 max-w-6xl">
+            <div className="grid gap-8 rounded-[26px] border bg-card p-7 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:grid-rows-[1fr_auto] lg:gap-x-12 lg:gap-y-6 lg:p-9">
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-display text-xl font-bold tracking-tight">
+                    {tCommon("plans.team")}
+                  </h3>
+                  <span className="rounded-full border px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    {t("pricing.team.badge")}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {t("pricing.team.description")}
+                </p>
+
+                <div className="mt-7 @container">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    {billingInterval === "year" && teamPricing.monthsFree > 0 && (
+                      <span className="text-lg text-muted-foreground line-through">
+                        ${formatCurrencyAmount(teamPricing.annualFullPrice)}
+                      </span>
+                    )}
+                    <span className="font-display max-w-full whitespace-nowrap text-[clamp(1.75rem,16cqi,3rem)] font-bold tracking-tight leading-none">
+                      ${formatCurrencyAmount(teamPricing.totalPrice)}
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
+                      {billingInterval === "year" ? t("pricing.period.year") : t("pricing.period.month")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {billingInterval === "year"
+                      ? t("pricing.billedYearly", { price: formatCurrencyAmount(Math.round(teamPricing.monthlyEquivalent * 100) / 100) })
+                      : t("pricing.team.seatAddon", {
+                          seats: teamConfig.includedSeats,
+                          price: teamConfig.seatPriceMonthly,
+                          hours: Math.round(teamConfig.extraSeatMinuteLimit / 60),
+                        })}
+                  </p>
+                </div>
+
+                {/* Seat selector */}
+                <div className="mt-4 flex items-center justify-between rounded-xl border bg-background px-3 py-2 text-xs lg:max-w-xs">
+                  <span className="font-medium text-muted-foreground">
+                    {t("pricing.team.seatsLabel", { count: teamPricing.seats })}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      aria-label={t("pricing.team.decreaseSeats")}
+                      disabled={teamPricing.seats <= teamConfig.includedSeats}
+                      onClick={() => setTeamSeats((value) => Math.max(teamConfig.includedSeats, value - 1))}
+                      className="flex size-6 items-center justify-center rounded-md border text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                    >
+                      <Minus className="size-3" />
+                    </button>
+                    <span className="w-6 text-center font-semibold tabular-nums">
+                      {teamPricing.seats}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={t("pricing.team.increaseSeats")}
+                      disabled={teamPricing.seats >= MAX_TEAM_SEATS}
+                      onClick={() => setTeamSeats((value) => Math.min(MAX_TEAM_SEATS, value + 1))}
+                      className="flex size-6 items-center justify-center rounded-md border text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                    >
+                      <Plus className="size-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:border-l lg:pl-12">
+                <PlanLimitsBlock
+                  className="mt-0"
+                  limits={{ monthly: planText.formatRuntime(teamPricing.totalHours * 3600), perVideo: planText.formatRuntime(teamConfig.youtubeMaxMinutes * 60) }}
+                />
+                <ul className="mt-6 grid gap-x-8 gap-y-3 border-t pt-6 sm:grid-cols-2">
+                  <li className="flex items-start gap-3 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {t("pricing.team.features.pooledHours", { hours: teamPricing.totalHours })}
+                  </li>
+                  <li className="flex items-start gap-3 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {t("pricing.team.features.seats", { seats: teamPricing.seats })}
+                  </li>
+                  <li className="flex items-start gap-3 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {t("pricing.team.features.quality", {
+                      resolution: teamConfig.resolution,
+                      hours: Math.round(teamConfig.youtubeMaxMinutes / 60),
+                    })}
+                  </li>
+                  <li className="flex items-start gap-3 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {/* Scheduling is only promised where publishing is offered, as on the Creator card. */}
+                    {t(socialPublishingStage() === "off" ? "pricing.team.features.aiEdits" : "pricing.team.features.sharedWorkspace", { aiEdits: teamConfig.aiEditLimit })}
+                  </li>
+                  <li className="flex items-start gap-3 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {t("pricing.team.features.roles")}
+                  </li>
+                </ul>
+              </div>
+
+              <div className="lg:col-start-1 lg:row-start-2 lg:max-w-xs">
+                {authEnabled ? (
+                  <Button asChild size="lg" variant="outline" className="h-11 w-full rounded-full text-sm">
+                    <Link href="/sign-up?next=/settings/team">
+                      {t("pricing.team.cta")}
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button asChild size="lg" variant="outline" className="h-11 w-full rounded-full text-sm">
+                    <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
+                      {t("hero.useHosted")}
+                      <ExternalLink className="size-4" />
+                    </a>
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal>
+            <p className="mx-auto mt-10 max-w-md text-center text-sm text-muted-foreground">{t("pricing.clipsNote")}</p>
+            <p className="mx-auto mt-2 max-w-md text-center text-xs text-muted-foreground">
+              {t("pricing.selfHostNote")}{" "}
+              <Link href={SELF_HOSTING_GUIDE_HREF} className="underline underline-offset-2 transition-colors hover:text-foreground">
+                {t("pricing.selfHostGuide")}
+              </Link>
+              .
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
+      <FaqSection />
+
+      {/* ─── COMMUNITY ─── */}
+      <section id="community" aria-labelledby="community-title" className="relative scroll-mt-24 overflow-hidden border-t py-24 md:py-32">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[34rem] bg-[radial-gradient(currentColor_1px,transparent_1.5px)] bg-[size:22px_22px] text-foreground/[0.13] [mask-image:radial-gradient(ellipse_55%_60%_at_50%_28%,black,transparent)]"
+        />
+        <div className="relative mx-auto max-w-6xl px-6">
+          <Reveal className="flex flex-col items-center text-center">
+            <div className="relative">
+              <div aria-hidden="true" className="absolute inset-0 -z-10 scale-150 rounded-full bg-[#5865f2]/20 blur-2xl" />
+              <div className="flex size-20 items-center justify-center rounded-[22px] border bg-background shadow-[0_18px_40px_-18px_rgba(88,101,242,0.6)]">
+                <Image src="/discord-mark.svg" alt="" width={42} height={31} className="h-auto" />
+              </div>
+            </div>
+            <p className="mt-8 text-sm font-medium text-muted-foreground">{t("community.eyebrow")}</p>
+            <h2
+              id="community-title"
+              className="mt-3 max-w-3xl font-display text-[2.6rem] font-bold leading-[0.98] tracking-[-0.035em] text-balance sm:text-6xl lg:text-7xl"
+            >
+              {t("community.title")}
+            </h2>
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">{t("community.body")}</p>
+            <Button asChild size="lg" className="mt-9 h-12 rounded-full bg-[#5865f2] px-7 text-[15px] text-white shadow-[0_10px_30px_-10px_rgba(88,101,242,0.8)] hover:bg-[#4752c4]">
+              <a href={DISCORD_COMMUNITY_URL} target="_blank" rel="noopener noreferrer">
+                {t("community.join")}
+                <ArrowUpRight aria-hidden="true" className="size-4" />
+              </a>
+            </Button>
+          </Reveal>
+
+          <Reveal delay={0.08}>
+            <ol className="mx-auto mt-20 grid max-w-5xl border-t sm:grid-cols-3">
+              {[
+                { key: "showcase", channel: "showcase" },
+                { key: "tips", channel: "creator-tips" },
+                { key: "ideas", channel: "feature-requests" },
+              ].map(({ key, channel }, index) => (
+                <li key={key} className="border-b py-6 sm:border-b-0 sm:px-8 sm:py-8 sm:first:pl-0 sm:[&:not(:first-child)]:border-l">
+                  <div className="flex items-center justify-between font-mono text-xs">
+                    <span className="text-[#4752c4] dark:text-[#a5adff]">#{channel}</span>
+                    <span aria-hidden="true" className="text-muted-foreground/70">0{index + 1}</span>
+                  </div>
+                  <p className="mt-4 font-display text-xl font-bold leading-snug tracking-tight">{t(`community.activities.${key}`)}</p>
+                </li>
+              ))}
+            </ol>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── SELF-HOSTING ─── */}
+      <section id="open-source" className="scroll-mt-24 border-y bg-canvas py-24 md:py-32">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <SectionHeading eyebrow={t("openSource.badge")} title={t("openSource.title")} body={t("openSource.body")} align="left" />
+            <Reveal delay={0.05}>
+              <ul className="mt-8 space-y-3 text-sm">
+                {(["license", "docker", "models"] as const).map((fact) => (
+                  <li key={fact} className="flex items-start gap-3">
+                    <Check className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {fact === "license" ? (
+                      <a href={SOURCE_LICENSE_URL} className="underline underline-offset-4">{t("openSource.facts.license")}</a>
+                    ) : t(`openSource.facts.${fact}`)}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-9 flex flex-wrap gap-3">
+                <Button asChild className="rounded-full">
+                  <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
+                    <Github className="size-4" />
+                    {t("pricing.selfHost.cta")}
+                  </a>
+                </Button>
+                <Button asChild variant="outline" className="rounded-full bg-background">
+                  <Link href={SELF_HOSTING_GUIDE_HREF}>{t(`links.${catalogKey(SELF_HOSTING_GUIDE_HREF)}.label`)}</Link>
+                </Button>
+              </div>
+            </Reveal>
+          </div>
+
+          <Reveal delay={0.1} className="min-w-0">
+            <div className="dark overflow-hidden rounded-[22px] border bg-background text-foreground shadow-2xl">
+              <div className="flex items-center gap-1.5 border-b px-4 py-3">
+                {[0, 1, 2].map((dot) => (
+                  <span key={dot} className="size-2.5 rounded-full bg-foreground/20" />
+                ))}
+                <span className="ml-3 font-mono text-[11px] text-muted-foreground">{t("openSource.commandLabel")}</span>
+              </div>
+              <pre className="overflow-x-auto p-6 font-mono text-[13px] leading-8">
+                <code>
+                  <span className="text-muted-foreground">$ </span>git clone https://github.com/FujiwaraChoki/supoclip{"\n"}
+                  <span className="text-muted-foreground">$ </span>cd supoclip && cp .env.example .env{"\n"}
+                  <span className="text-muted-foreground">{t("openSource.comment")}</span>{"\n"}
+                  <span className="text-muted-foreground">$ </span>docker compose up -d --build{"\n"}
+                  <span className="text-emerald-400">✓</span> <span className="text-muted-foreground">{t("openSource.ready")}</span>
+                </code>
+              </pre>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── GUIDES ─── */}
+      <section id="guides" className="scroll-mt-24 py-24 md:py-32">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
+            <SectionHeading eyebrow={t("guides.eyebrow")} title={t("guides.title")} body={t("guides.body")} align="left" />
+          </div>
+          <div className="mt-12 grid border-t md:grid-cols-2 md:gap-x-12">
+            {SEO_RESOURCES.map((resource, index) => (
+              <Reveal key={resource.href} delay={(index % 2) * 0.06}>
+                <Link
+                  href={resource.href}
+                  lang={contentLangAttr(resource.languages, locale)}
+                  className="group flex items-start justify-between gap-6 border-b py-6 transition-colors"
+                >
+                  <span>
+                    <span className="text-sm text-muted-foreground">
+                      {t(`links.${catalogKey(resource.href)}.eyebrow`)}
+                    </span>
+                    <span className="mt-2 block text-lg font-semibold tracking-tight underline-offset-4 group-hover:underline">
+                      {t(`links.${catalogKey(resource.href)}.title`)}
+                    </span>
+                    <span className="mt-1.5 block text-sm leading-relaxed text-muted-foreground">
+                      {t(`links.${catalogKey(resource.href)}.description`)}
+                    </span>
+                  </span>
+                  <span className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border transition-colors group-hover:bg-foreground group-hover:text-background">
+                    <ArrowUpRight className="size-4" />
+                  </span>
+                </Link>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FINAL CTA ─── */}
+      <section className="px-3 pb-24 md:pb-32">
+        <Reveal>
+          <div className="dark relative mx-auto max-w-6xl overflow-hidden rounded-[36px] bg-background px-6 py-20 text-center text-foreground md:py-28">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle_at_1px_1px,currentColor_1px,transparent_0)] [background-size:28px_28px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
+            />
+            <div className="relative">
+              <h2 className="mx-auto max-w-3xl font-display text-4xl font-bold leading-[1.02] tracking-[-0.03em] text-balance sm:text-6xl">
+                {t("cta.title")}
+              </h2>
+              <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-muted-foreground">{t("cta.body")}</p>
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+                <PrimaryCta authEnabled={authEnabled} label={t("nav.getStarted")} hostedLabel={t("nav.openHosted")} />
+                <a
+                  href={APP_STORE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t("hero.appStoreAria")}
+                  className="flex items-center"
+                >
+                  <Image src="/app-store-badge.svg" alt={t("hero.appStoreAlt")} width={135} height={40} className="h-12 w-auto" />
+                </a>
+              </div>
+              <a href={PRODUCT_HUNT_URL} target="_blank" rel="noopener noreferrer" className="mt-10 inline-block opacity-80 transition-opacity hover:opacity-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={PRODUCT_HUNT_BADGE_URL} alt={t("hero.productHuntAlt")} width={200} height={43} />
+              </a>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      <SiteFooter />
+    </div>
+  );
+}

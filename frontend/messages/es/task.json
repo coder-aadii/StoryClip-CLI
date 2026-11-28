@@ -1,0 +1,310 @@
+{
+  "errors": {
+    "action": "No se pudo completar la acción. Inténtalo de nuevo.",
+    "load": "No se pudo cargar la tarea",
+    "fetchTask": "No se pudo obtener la tarea: {status}",
+    "fetchClips": "No se pudieron obtener los clips: {status}",
+    "updateTitle": "No se pudo actualizar el título",
+    "deleteTask": "No se pudo eliminar la tarea",
+    "deleteClip": "No se pudo eliminar el clip",
+    "applySettings": "No se pudo aplicar la configuración",
+    "deleteFont": "No se pudo eliminar la fuente",
+    "exportClip": "No se pudo exportar el clip",
+    "share": "No se pudo crear el enlace para compartir",
+    "disableShare": "No se pudo desactivar el enlace para compartir",
+    "downloadAll": "No se pudieron descargar los clips. Inténtalo de nuevo.",
+    "createTask": "No se pudo iniciar la nueva generación"
+  },
+  "alreadyProcessing": "Este video ya se está procesando.",
+  "toasts": {
+    "settingsApplied": "Configuración de la generación aplicada",
+    "cancelled": "Generación cancelada",
+    "retryQueued": "Generación en cola para reintentar"
+  },
+  "hooks": {
+    "question": "Gancho de pregunta",
+    "statement": "Afirmación contundente",
+    "statistic": "Datos/estadísticas",
+    "story": "Gancho de historia",
+    "contrast": "Gancho de contraste",
+    "none": "Sin gancho",
+    "fallback": "Ninguno"
+  },
+  "back": "Biblioteca",
+  "titleLabel": "Título de la generación",
+  "saveTitle": "Guardar título",
+  "cancelTitle": "Cancelar edición del título",
+  "editTitle": "Editar título",
+  "clipsTotal": "{count, plural, one {# clip} other {# clips}} · {duration} en total",
+  "outputLength": "{duration} en total",
+  "readOnly": "Vista de solo lectura de la generación de otra cuenta.",
+  "cancel": "Cancelar",
+  "retryGeneration": "Reintentar generación",
+  "restyle": "Restilizar",
+  "creatingLink": "Creando enlace…",
+  "linkCopied": "Enlace copiado",
+  "originalVideo": "Video original",
+  "copyShare": "Copiar enlace para compartir",
+  "disabling": "Desactivando…",
+  "disableShare": "Desactivar enlace para compartir",
+  "openEditor": "Abrir editor",
+  "deleteGeneration": "Eliminar generación",
+  "moreActions": "Más acciones",
+  "reconnectingOwn": "Reconectando a las actualizaciones en vivo. Tu video sigue procesándose.",
+  "reconnectingOther": "Reconectando a las actualizaciones en vivo. Esta generación sigue procesándose.",
+  "cancelledTitle": "Generación cancelada",
+  "cancelledBody": "Vuelve a intentar esta generación cuando quieras. Los clips terminados se conservarán.",
+  "failedTitle": "Error de procesamiento",
+  "failedBody": "El procesamiento ha fallado. Reintenta la generación. Los clips terminados se conservarán.",
+  "failedBodyAgeRestricted": "Este video de YouTube tiene restricción de edad, así que no podemos descargarlo. Descarga el video tú mismo y sube el archivo. No se usaron minutos.",
+  "failedBodyGeoRestricted": "Este video de YouTube no está disponible en nuestra región, así que no podemos descargarlo. Descarga el video tú mismo y sube el archivo. No se usaron minutos.",
+  "backHome": "Volver al inicio",
+  "noClipsTitle": "No se generaron clips",
+  "noClipsBody": "La generación terminó, pero no se crearon clips. Es posible que el video no tuviera contenido adecuado para recortar.",
+  "tryAnother": "Probar otro video",
+  "sortLabel": "Ordenar clips",
+  "sort": {
+    "score": "Mejores primero",
+    "timeline": "Línea de tiempo"
+  },
+  "downloadAs": "Descargar como",
+  "downloadFormat": "Formato de descarga",
+  "downloadAll": "Descargar todo",
+  "downloadAllHint": "Descarga todos los clips en un ZIP con los archivos originales",
+  "preparingDownload": "Preparando…",
+  "original": "Original",
+  "settingsTitle": "Configuración de la generación",
+  "settingsBody": "Configura la fuente, los subtítulos y la limpieza de los clips de esta generación.",
+  "font": "Fuente",
+  "templateDefault": "Predeterminado de la plantilla",
+  "color": "Color",
+  "captionTemplate": "Plantilla de subtítulos",
+  "selectStyle": "Elegir estilo",
+  "defaultTemplate": "Predeterminado",
+  "brollTitle": "B-roll",
+  "brollBody": "Añade metraje de archivo cuando se menciona algo que se puede mostrar. Al aplicar se conserva el B-roll existente y se completa en clips sin él; al desactivarlo se quita.",
+  "cleanupTitle": "Limpieza del clip",
+  "cleanupBody": "Aplica cortes de silencio y muletillas a los clips regenerados.",
+  "shortenPauses": "Acortar pausas largas",
+  "pauseThreshold": "Umbral de pausa (ms)",
+  "removeFillers": "Quitar muletillas",
+  "extraWords": "Palabras o frases filtradas extra",
+  "extraWordsPlaceholder": "básicamente, literalmente, la verdad",
+  "applying": "Aplicando...",
+  "apply": "Aplicar a todos los clips",
+  "deleteFontTitle": "¿Eliminar fuente?",
+  "deleteFontBody": "¿Eliminar {name}? Esto no se puede deshacer.",
+  "keepFont": "Conservar fuente",
+  "deleteFont": "Eliminar fuente",
+  "deleteGenerationTitle": "Eliminar generación",
+  "deleteGenerationBody": "¿Seguro que quieres eliminar esta generación? Se eliminarán de forma permanente todos los clips y no se puede deshacer.",
+  "deleting": "Eliminando...",
+  "delete": "Eliminar",
+  "deleteClipTitle": "Eliminar clip",
+  "deleteClipBody": "¿Seguro que quieres eliminar este clip? Esta acción no se puede deshacer.",
+  "clipNumber": "Clip {order}",
+  "topPick": "Mejor elección",
+  "preview": "Previsualizar {title}",
+  "downloadNamed": "Descargar {title}",
+  "download": "Descargar",
+  "edit": "Editar",
+  "deleteClip": "Eliminar clip",
+  "position": "Clip {current} de {total}",
+  "previous": "Clip anterior",
+  "next": "Clip siguiente",
+  "virality": "Puntaje de viralidad",
+  "relevanceWithHook": "{hook} · {percent}% de relevancia",
+  "relevance": "{percent}% de relevancia",
+  "scores": {
+    "hook": "Gancho",
+    "engagement": "Interacción",
+    "value": "Valor",
+    "shareability": "Compartibilidad"
+  },
+  "openInEditor": "Abrir en el editor",
+  "steps": {
+    "fetching": "Obteniendo video",
+    "transcribing": "Transcribiendo",
+    "finding": "Buscando momentos",
+    "rendering": "Renderizando clips"
+  },
+  "eta": {
+    "queued": "Esperando a un worker",
+    "estimating": "Calculando el tiempo restante…",
+    "stillDownloading": "Tu video se sigue descargando…",
+    "minuteRange": "Quedan entre {low} y {high} min aprox.",
+    "underMinute": "Menos de un minuto",
+    "minutes": "Unos {count} min restantes"
+  },
+  "clipOf": "Clip {current} de {total}",
+  "leavePage": "Puedes salir de esta página — tus clips te esperarán en tu biblioteca.",
+  "sourceLength": "{duration} de video original",
+  "percentComplete": "{progress}% completo",
+  "transcript": {
+    "heading": "Transcripción",
+    "seeMore": "Ver más",
+    "full": "Transcripción completa",
+    "forTitle": "Transcripción de {title}",
+    "complete": "Transcripción completa de este clip"
+  },
+  "workflowBadge": {
+    "series": "Serie · {count, plural, one {# parte} other {# partes}}",
+    "topic": "Tema: {topic}",
+    "recap": "Resumen",
+    "trailer": "Tráiler",
+    "seriesPending": "Serie"
+  },
+  "partOf": "Parte {n} de {total}",
+  "partLabel": "Parte {n}",
+  "endsOn": "Termina con: {text}",
+  "postCaption": "Texto para publicar",
+  "copyCaption": "Copiar texto",
+  "captionCopied": "Texto copiado",
+  "downloadAllParts": "Descargar todas las partes",
+  "downloadAllPartsHint": "Descarga todas las partes en un ZIP con los archivos originales, numeradas en orden",
+  "incompleteSeries": "Detenido en la parte {done} de {total}. Reintenta para terminar la serie.",
+  "coversPoints": "{count, plural, one {Cubre # punto} other {Cubre # puntos}}",
+  "pointKinds": {
+    "opener": "Introducción",
+    "closer": "Conclusión"
+  },
+  "beatsTitle": "Estructura",
+  "beatRoles": {
+    "cold_open": "Gancho",
+    "context": "Contexto",
+    "escalation": "Tensión",
+    "button": "Cierre"
+  },
+  "sourceMoment": "Desde el {time} del original",
+  "sourceMoments": "Momentos del original",
+  "playFrom": "Reproducir desde {time}",
+  "topicHeader": "Sobre {topic} · {count, plural, one {# momento} other {# momentos}}",
+  "instructionsUsed": "Instrucciones",
+  "stepsByWorkflow": {
+    "series": {
+      "finding": "Trazando la historia",
+      "rendering": "Cortando las partes"
+    },
+    "topic": {
+      "finding": "Buscando momentos sobre tu tema",
+      "rendering": "Renderizando clips"
+    },
+    "recap": {
+      "finding": "Eligiendo los puntos clave",
+      "rendering": "Editando tu resumen"
+    },
+    "trailer": {
+      "finding": "Escribiendo el tráiler",
+      "rendering": "Editando tu tráiler"
+    }
+  },
+  "workflowNotes": {
+    "PART_COUNT_REDUCED": "Pediste {requested} partes. Este video da para {actual}.",
+    "STORY_ARC_SELECTED": "Hecha con la historia más fuerte ({start}–{end}). Añade instrucciones para elegir otra.",
+    "CHAPTERS_LEFT_OUT": "Omitido para que quepa: {chapters}. Añade instrucciones para cambiar lo que se queda.",
+    "NO_SINGLE_STORY": "Este video no tiene una sola historia continua. Esta serie sigue su hilo conectado más largo.",
+    "TOPIC_THIN": "Solo {count, plural, one {# momento trata} other {# momentos tratan}} de verdad sobre este tema.",
+    "TOPIC_BROADENED": "«{topic}» es muy amplio para este video, así que lo entendimos como: {interpretation}",
+    "TARGET_SHORTENED": "El video es corto, así que el resumen también es más corto.",
+    "COARSE_TRANSCRIPT": "Esta transcripción no tiene tiempos por palabra, así que los cortes son menos precisos.",
+    "SPONSOR_SKIPPED": "Dejamos fuera una mención del patrocinador.",
+    "COLD_OPEN_SKIPPED": "Ninguna frase era lo bastante fuerte para una apertura en frío, así que la parte 1 empieza por el principio."
+  },
+  "workflowErrors": {
+    "topic_not_found": {
+      "title": "“{topic}” apenas aparece en este video",
+      "body": "Solo encontramos menciones de pasada, no momentos completos. Te devolvimos tus minutos.",
+      "suggestionsLabel": "Este video habla sobre todo de:",
+      "mentions": "Se menciona de pasada en {times}.",
+      "cta": "Crear momentos destacados"
+    },
+    "source_too_short": {
+      "series": {
+        "title": "Este video es demasiado corto para una serie",
+        "body": "Una serie necesita suficiente historia para al menos dos partes. Te devolvimos tus minutos."
+      },
+      "topic": {
+        "title": "Este video es demasiado corto para buscar por tema",
+        "body": "La búsqueda por tema funciona con videos de más de un minuto. Te devolvimos tus minutos."
+      },
+      "recap": {
+        "title": "Este video es demasiado corto para un resumen",
+        "body": "Los resúmenes funcionan con videos de más de 3 minutos. Te devolvimos tus minutos."
+      },
+      "trailer": {
+        "title": "Este video es demasiado corto para un tráiler",
+        "body": "Los tráileres funcionan con videos de más de 3 minutos. Te devolvimos tus minutos."
+      },
+      "cta": "Crear momentos destacados"
+    },
+    "no_story": {
+      "title": "No encontramos una historia que dividir en partes",
+      "body": "Este video no tiene una historia que dure lo suficiente. Te devolvimos tus minutos.",
+      "cta": "Crear un resumen"
+    },
+    "recap_unsupported": {
+      "title": "No hay suficientes puntos distintos para un resumen",
+      "body": "Te devolvimos tus minutos.",
+      "cta": "Crear momentos destacados"
+    },
+    "trailer_unbuildable": {
+      "title": "No pudimos hacer un tráiler sin revelar el final",
+      "body": "Te devolvimos tus minutos.",
+      "cta": "Crear un resumen"
+    },
+    "analysis_incomplete": {
+      "title": "No pudimos analizar todo el video",
+      "body": "Falló una parte del análisis. Te devolvimos tus minutos.",
+      "cta": "Intentar de nuevo"
+    },
+    "plan_failed": {
+      "title": "El editor de IA no pudo terminar este plan",
+      "body": "Te devolvimos tus minutos.",
+      "cta": "Intentar de nuevo"
+    },
+    "render_incomplete": {
+      "title": "No se pudo renderizar una parte del video",
+      "body": "Te devolvimos tus minutos.",
+      "cta": "Intentar de nuevo"
+    },
+    "transcript_untimed": {
+      "title": "Esta transcripción no tiene tiempos",
+      "body": "Necesitamos tiempos para cortar con precisión. Sube el archivo en su lugar.",
+      "cta": "Volver al inicio"
+    },
+    "highlightsInstead": "Crear momentos destacados"
+  },
+  "clipLoadFailed": "No se pudo cargar este clip.",
+  "retryPlayback": "Reintentar reproducción",
+  "recovery": {
+    "heading": "Un poquito de paciencia",
+    "messages": {
+      "snags": "Nos hemos encontrado con algunos obstáculos, así que esto está tardando un poco más de lo habitual.",
+      "hiccup": "Un pequeño contratiempo nos está frenando. Puede que tardemos un poquito más.",
+      "scenicRoute": "Este video ha elegido la ruta panorámica. Tardará un poco más de lo habitual.",
+      "bumps": "Hay algunos baches en el camino. Los estamos superando—solo necesitamos un poco más de tiempo.",
+      "slower": "Las cosas van un poco más despacio de lo habitual. Seguimos en ello."
+    }
+  },
+  "fx": {
+    "title": "Edición",
+    "intensity": "Intensidad de edición",
+    "intensityHint": "Con cuánta fuerza golpea la edición. Cambiarla vuelve a renderizar todos los clips.",
+    "rendering": "Renderizando la edición…",
+    "queued": "Volviendo a renderizar tus clips. Puede tardar unos minutos; puedes salir de esta página.",
+    "applied": "Edición aplicada",
+    "jobFailed": "No se pudo aplicar la edición: {message}",
+    "jobErrors": {
+      "WORKER_UNAVAILABLE": "ningún renderizador tomó el trabajo. Inténtalo de nuevo en unos minutos.",
+      "WORKER_STOPPED": "el renderizador se detuvo antes de terminar la edición.",
+      "CLIP_JOB_TIMEOUT": "el renderizado tardó demasiado."
+    },
+    "jobInProgress": "Ya hay un nuevo renderizado en curso. Tus clips se actualizarán cuando termine.",
+    "jobUnreachable": "Perdimos el contacto con el renderizado. Puede que siga en marcha.",
+    "jobDenied": "Ya no tienes acceso a este renderizado. Inicia sesión de nuevo y recarga la página.",
+    "retry": "Reintentar",
+    "approxTiming": "Este video no tenía tiempos por palabra, así que los subtítulos y efectos siguen tiempos aproximados.",
+    "simplified": "Algunos efectos se simplificaron en este clip."
+  },
+  "sourceRange": "Parte {start}–{end}"
+}

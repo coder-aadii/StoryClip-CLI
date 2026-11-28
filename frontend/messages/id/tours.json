@@ -1,0 +1,155 @@
+{
+  "new": "Baru",
+  "welcomeBadge": "Selamat datang",
+  "next": "Berikutnya",
+  "back": "Kembali",
+  "done": "Selesai",
+  "start": "Tunjukkan 👀",
+  "notNow": "Nanti saja",
+  "progress": "{current} dari {total}",
+  "welcome": {
+    "intro": {
+      "title": "Selamat datang di SupoClip",
+      "body": "Berikan video panjang dan kami ubah momen terbaiknya menjadi klip vertikal pendek, lengkap dengan teks dan siap diunggah. Tur dua menit: cara membuat klip pertamamu, lalu setiap halaman yang akan kamu pakai."
+    },
+    "source": {
+      "title": "Mulai dengan video",
+      "body": "Tempel tautan YouTube, Twitch, atau Kick di sini, atau unggah file dengan ikon penjepit kertas, lalu tekan panah. Podcast, wawancara, dan presentasi 10 menit atau lebih hasilnya paling bagus."
+    },
+    "workflows": {
+      "title": "Pilih yang ingin dibuat",
+      "body": "Highlights memberi momen terbaik yang berdiri sendiri, pilihan tepat untuk percobaan pertama. Pilihan lain mengubah satu video menjadi seri, rangkuman, trailer, atau semua klip tentang satu topik."
+    },
+    "settings": {
+      "title": "Atur tampilan sekali saja",
+      "body": "Durasi klip, gaya teks, pembingkaian, dan B-roll ada di menu ini. Pengaturan bawaannya sudah bagus, dan perubahanmu kami ingat."
+    },
+    "library": {
+      "title": "Pustaka",
+      "body": "Setiap video yang kamu klip muncul di sini, yang terbaru di atas, dan bisa kamu cari. Kamu boleh pergi saat video diproses; prosesnya tetap berjalan dan hasilnya muncul di sini."
+    },
+    "libraryClips": {
+      "title": "Klipmu, diurutkan skor",
+      "body": "Buka video untuk melihat klipnya, skor terbaik di atas. Unduh satu atau semuanya, atau buka klip di studio untuk memotong, memperbaiki teks, atau membingkai ulang."
+    },
+    "social": {
+      "title": "Hubungkan akunmu",
+      "body": "Tautkan akun media sosialmu di sini untuk mengunggah klip langsung dari SupoClip, tanpa mengunduhnya dulu."
+    },
+    "analytics": {
+      "title": "Lihat yang berhasil",
+      "body": "Tayangan, suka, dan komentar dari unggahanmu kembali ke sini, per platform, hook, dan durasi. Setelah beberapa unggahan, SupoClip memakainya untuk memilih klip yang mirip dengan yang terbaik."
+    },
+    "agents": {
+      "title": "Klip dari asisten AI-mu",
+      "body": "Hubungkan Claude, ChatGPT, atau Grok dan minta klip lewat chat: tempel URL server lalu masuk, tanpa kunci yang perlu disalin. Sedang membangun sesuatu? Buat kunci API di bawah."
+    },
+    "captions": {
+      "title": "Gaya teksmu",
+      "body": "Atur font, ukuran, dan warna awal untuk setiap video baru, lengkap dengan pratinjau. Kamu tetap bisa mengubahnya per video."
+    },
+    "plan": {
+      "title": "Paketmu",
+      "body": "Paket dihitung dari menit video yang kamu bawa, bukan jumlah klip. Lihat pemakaian bulan ini dan ubah paketmu di sini."
+    },
+    "finish": {
+      "title": "Siap mulai",
+      "body": "Itu saja. Tempel tautan pertamamu di sini dan sisanya serahkan pada kami."
+    }
+  },
+  "creator-agent": {
+    "intro": {
+      "title": "Kenalan dengan agenmu",
+      "body": "Beranda kamu sekarang bisa mengerjakan semuanya untukmu. Bilang ke agen apa yang kamu mau, dan dia akan membuat clip, mengedit, menulis caption, menjadwalkan, dan memposting, dengan alat yang sama seperti yang kamu pakai."
+    },
+    "talk": {
+      "title": "Bilang saja seperti ke editor",
+      "body": "Tempel tautan atau lampirkan video, lalu tambahkan apa yang kamu mau: “tiga clip untuk TikTok minggu ini”, “potong semua ehm di clip 2”, “posting yang terbaik besok jam 6”. Kalau ada yang perlu diputuskan, dia akan menampilkan pilihan yang tinggal kamu ketuk."
+    },
+    "suggestions": {
+      "title": "Ide khusus untukmu",
+      "body": "Saran ini berasal dari akunmu sendiri: posting clip dari proyek terbarumu, jadikan serial, atau lihat yang akan datang. Sekali ketuk, Agent langsung bekerja."
+    },
+    "manual": {
+      "title": "Kontrolmu tetap satu klik saja",
+      "body": "Mau semua pengaturan ada di depanmu untuk satu video? Tautan ini membuka formulir pembuatan untuk kali ini saja. Kamu bisa memilih mana yang terbuka duluan di Pengaturan."
+    },
+    "calendar": {
+      "title": "Semuanya dalam satu kalender",
+      "body": "Setiap clip yang terjadwal, sudah diposting, dan gagal ada di satu tempat. Seret postingan ke hari lain untuk memindahkannya, atau minta agen mengisi slot kosong dengan clip terbaikmu yang belum diposting, di waktu yang pas. Posting langsung selalu menunggu OK darimu."
+    }
+  },
+  "workflows": {
+    "intro": {
+      "title": "Memperkenalkan alur kerja",
+      "body": "Alur kerja memungkinkanmu memilih apa yang dibuat sebelum mulai. Selain sorotan, satu video kini bisa menjadi serial bernomor, semua klip tentang satu topik, rangkuman, atau trailer. Ini sekilas tentang masing-masing, cukup satu menit."
+    },
+    "highlights": {
+      "title": "Sorotan",
+      "body": "Yang sudah kamu kenal: momen terbaik, masing-masing bisa berdiri sendiri. Ini tetap menjadi pilihan default."
+    },
+    "series": {
+      "title": "Serial",
+      "body": "Mengubah video panjang menjadi bagian bernomor yang diputar berurutan, dan tiap bagian membuat orang ingin menonton berikutnya. Cocok untuk cerita dan tutorial."
+    },
+    "topic": {
+      "title": "Topik",
+      "body": "Sebutkan satu subjek dan dapatkan setiap momen kuat tentangnya, seperti “harga” dalam wawancara panjang. Ketik di baris yang muncul di bawah tautanmu."
+    },
+    "recap": {
+      "title": "Rangkuman",
+      "body": "Satu video pendek yang mencakup poin utama seluruh video, dengan poin-poinnya tampil di layar."
+    },
+    "trailer": {
+      "title": "Trailer",
+      "body": "Satu pratinjau pendek yang dibuat agar orang menonton video lengkapnya, tanpa membocorkan akhir cerita."
+    },
+    "instructions": {
+      "title": "Beri arahanmu sendiri",
+      "body": "Apa pun pilihanmu, tambahkan catatan seperti “hanya momen lucu” dan klipnya akan mengikutinya."
+    },
+    "settings": {
+      "title": "Semua yang lain ada di sini",
+      "body": "Durasi, teks, pembingkaian, pembersihan, dan B-roll kini ada dalam satu menu. Kami mengingat pilihanmu, jadi cukup diatur sekali."
+    }
+  },
+  "composer-settings": {
+    "settings": {
+      "title": "Semua yang lain ada di sini",
+      "body": "Durasi, teks, pembingkaian, pembersihan, dan B-roll kini ada dalam satu menu. Kami mengingat pilihanmu, jadi cukup diatur sekali."
+    }
+  },
+  "dynamic-edits": {
+    "intro": {
+      "title": "Kenalan dengan Edit dinamis",
+      "body": "Klipmu sekarang bisa diedit seperti editor video pendek terbaik: teks animasi, bingkai ulang, efek suara, dan musik tepat di momen yang penting. AI menemukan momen-momen itu; kamu yang pilih seberapa keras hantamannya."
+    },
+    "intensity": {
+      "title": "Pilih seberapa keras hantamannya",
+      "body": "<b>Halus:</b> subtitle bergaris tepi, sesekali bingkai ulang, dan musik pelan, seperti klip podcast.\n<b>Tegas:</b> teks gaya Hormozi di atas kapsul gelap, kata demi kata dengan kata kunci di dalam kotak, plus zoom yang bertahan.\n<b>Maksimal:</b> huruf kapital tebal bergaris tepi, bingkai ulang hampir di setiap kalimat, hantaman lebih keras, dan sesekali kilatan di potongan.\n<b>Mati</b> membiarkan klip apa adanya."
+    },
+    "sound": {
+      "title": "Suara, musik, dan kata kasar",
+      "body": "Efek suara jatuh di potongan dan momen di layar, tidak pernah di obrolan biasa. Musik hadir dalam tujuh suasana, dari santai sampai agresif: biarkan di “Sesuai video” dan AI memilih yang cocok, atau pilih sendiri. Kata kasar disensor dengan bunyi bip dan ditampilkan sebagai f*** di teks. Setelah edit aktif, semuanya punya sakelar di “Atur detail”."
+    },
+    "captions": {
+      "title": "Gaya teks animasi",
+      "body": "Stabilo memasukkan kata kunci ke kotak, Emoji Drop menaruh emoji di bawah hal yang sedang dibicarakan, dan Di Belakang Kepala menaruh satu kata raksasa di belakang pembicara. Masing-masing mengikuti tampilan intensitasmu, dan bisa dipakai sendiri saat edit mati."
+    }
+  },
+  "dynamic-edits-studio": {
+    "intro": {
+      "title": "Edit dinamis di studio",
+      "body": "Setiap efek di klip bisa diubah di sini sebelum diekspor, satu per satu atau sekaligus."
+    },
+    "panel": {
+      "title": "Tab Edit",
+      "body": "Ubah intensitas, suasana musik, atau sakelar klip ini, minta AI merencanakan ulang edit, atau hapus semuanya. Daftar menampilkan setiap momen yang dipilih AI: klik salah satunya untuk melompat ke sana. Setiap perubahan bisa dibatalkan."
+    },
+    "lane": {
+      "title": "Setiap efek di linimasa",
+      "body": "Setiap zoom dan suara adalah satu blok di sini, dan jalur musik menunjukkan musik di bawah suara. Seret blok untuk memindahkannya, klik dua kali untuk mengubahnya, atau pilih lalu tekan Delete. Klik dua kali di tempat kosong untuk menambah suara."
+    }
+  },
+  "skip": "Lewati"
+}

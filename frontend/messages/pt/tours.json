@@ -1,0 +1,155 @@
+{
+  "new": "Novo",
+  "welcomeBadge": "Boas-vindas",
+  "next": "Avançar",
+  "back": "Voltar",
+  "done": "Concluir",
+  "start": "Mostrar 👀",
+  "notNow": "Agora não",
+  "progress": "{current} de {total}",
+  "welcome": {
+    "intro": {
+      "title": "Boas-vindas ao SupoClip",
+      "body": "Envie um vídeo longo e transformamos os melhores momentos em clipes verticais curtos, com legendas e prontos para postar. Um tour de dois minutos: como criar seus primeiros clipes e depois cada página que você vai usar."
+    },
+    "source": {
+      "title": "Comece com um vídeo",
+      "body": "Cole aqui um link do YouTube, Twitch ou Kick, ou envie um arquivo pelo clipe de papel, e depois toque na seta. Podcasts, entrevistas e palestras de 10 minutos ou mais funcionam melhor."
+    },
+    "workflows": {
+      "title": "Escolha o que criar",
+      "body": "Destaques traz os melhores momentos, cada um funcionando sozinho, e é a melhor escolha para começar. Os outros transformam um vídeo em série, resumo, trailer ou todos os clipes sobre um tema."
+    },
+    "settings": {
+      "title": "Defina o estilo uma vez",
+      "body": "Duração, legendas, enquadramento e B-roll ficam neste menu. O padrão já é bom, e lembramos o que você mudar."
+    },
+    "library": {
+      "title": "Biblioteca",
+      "body": "Todo vídeo que você recorta aparece aqui, o mais recente primeiro, e dá para pesquisar. Você pode sair enquanto um é processado; ele continua e aparece aqui quando terminar."
+    },
+    "libraryClips": {
+      "title": "Seus clipes, por nota",
+      "body": "Abra um vídeo para ver os clipes, com a melhor nota primeiro. Baixe um ou todos, ou abra um clipe no estúdio para cortar, corrigir uma legenda ou reenquadrar."
+    },
+    "social": {
+      "title": "Conecte suas contas",
+      "body": "Vincule aqui suas redes sociais para publicar clipes direto do SupoClip, sem precisar baixá-los antes."
+    },
+    "analytics": {
+      "title": "Veja o que funciona",
+      "body": "Visualizações, curtidas e comentários das suas postagens voltam para cá, por plataforma, gancho e duração. Depois de algumas postagens, o SupoClip usa isso para escolher clipes parecidos com os seus melhores."
+    },
+    "agents": {
+      "title": "Clipes pelo seu assistente de IA",
+      "body": "Conecte Claude, ChatGPT ou Grok e peça clipes num chat: cole a URL do servidor e entre, sem chave para copiar. Está construindo algo? Crie uma chave de API abaixo."
+    },
+    "captions": {
+      "title": "Seu estilo de legenda",
+      "body": "Defina a fonte, o tamanho e a cor com que cada vídeo novo começa, com prévia. Você ainda pode mudá-los em um vídeo específico."
+    },
+    "plan": {
+      "title": "Seu plano",
+      "body": "Os planos contam minutos dos vídeos que você envia, não clipes. Veja quanto usou neste mês e mude seu plano aqui."
+    },
+    "finish": {
+      "title": "Tudo pronto",
+      "body": "É isso. Cole aqui seu primeiro link e a gente cuida do resto."
+    }
+  },
+  "creator-agent": {
+    "intro": {
+      "title": "Conheça seu agente",
+      "body": "Sua tela inicial agora pode fazer o trabalho por você. Diga ao agente o que você quer e ele cria os clipes, edita, escreve as legendas, agenda e publica, com as mesmas ferramentas que você usa."
+    },
+    "talk": {
+      "title": "Peça como pediria a um editor",
+      "body": "Cole um link ou anexe um vídeo e diga o que você quer: “três clipes para o TikTok esta semana”, “tira os ééé do clipe 2”, “publica o melhor amanhã às 18h”. Quando tem alguma decisão a tomar, ele mostra opções para você tocar."
+    },
+    "suggestions": {
+      "title": "Ideias feitas para você",
+      "body": "Elas vêm da sua própria conta: poste clipes do seu projeto mais recente, transforme-o em uma série ou veja o que vem por aí. Um toque e o Agent começa a trabalhar."
+    },
+    "manual": {
+      "title": "Seus controles continuam a um clique",
+      "body": "Quer todas as configurações na sua frente para um vídeo? Este link abre o formulário de criação só desta vez. Você escolhe qual abre primeiro em Configurações."
+    },
+    "calendar": {
+      "title": "Tudo em um só calendário",
+      "body": "Todo clipe agendado, publicado ou com falha em um só lugar. Arraste um post para outro dia para mudar a data, ou peça ao agente para preencher os buracos com seus melhores clipes ainda não publicados, em bons horários. Publicar na hora sempre espera o seu OK."
+    }
+  },
+  "workflows": {
+    "intro": {
+      "title": "Apresentando os fluxos",
+      "body": "Os fluxos permitem escolher o que criar antes de começar. Além dos destaques, um vídeo agora pode virar uma série numerada, todos os clipes sobre um tema, um resumo ou um trailer. Veja cada um em um minuto."
+    },
+    "highlights": {
+      "title": "Destaques",
+      "body": "O que você já conhece: os melhores momentos, cada um funcionando sozinho. Continua sendo o padrão."
+    },
+    "series": {
+      "title": "Série",
+      "body": "Transforma um vídeo longo em partes numeradas que seguem em ordem, cada uma deixando vontade de ver a próxima. Ótimo para histórias e tutoriais."
+    },
+    "topic": {
+      "title": "Tema",
+      "body": "Diga um assunto e receba cada momento forte sobre ele, como “preços” em uma entrevista longa. Você digita na linha que aparece abaixo do link."
+    },
+    "recap": {
+      "title": "Resumo",
+      "body": "Um vídeo curto com os pontos principais de todo o conteúdo, com esses pontos listados na tela."
+    },
+    "trailer": {
+      "title": "Trailer",
+      "body": "Uma prévia curta feita para levar as pessoas a assistir ao vídeo completo, sem revelar o final."
+    },
+    "instructions": {
+      "title": "Dê sua própria direção",
+      "body": "Seja qual for a escolha, adicione uma nota como “só os momentos engraçados” e os clipes vão segui-la."
+    },
+    "settings": {
+      "title": "Todo o resto fica aqui",
+      "body": "Duração, legendas, enquadramento, limpeza e B-roll agora ficam em um só menu. Lembramos suas escolhas, então você só configura uma vez."
+    }
+  },
+  "composer-settings": {
+    "settings": {
+      "title": "Todo o resto fica aqui",
+      "body": "Duração, legendas, enquadramento, limpeza e B-roll agora ficam em um só menu. Lembramos suas escolhas, então você só configura uma vez."
+    }
+  },
+  "dynamic-edits": {
+    "intro": {
+      "title": "Chegaram as edições dinâmicas",
+      "body": "Agora seus clipes podem ser editados como fazem os melhores editores de vídeo curto: legendas animadas, reenquadres, efeitos sonoros e música nos momentos que importam. A IA encontra esses momentos; você escolhe com que força eles batem."
+    },
+    "intensity": {
+      "title": "Escolha com que força bate",
+      "body": "<b>Sutil:</b> legendas com contorno, um reenquadre de vez em quando e música baixa, como um corte de podcast.\n<b>Forte:</b> legendas no estilo Hormozi sobre uma pílula escura, palavra por palavra com a palavra-chave numa caixa, e zooms que se mantêm.\n<b>Máxima:</b> maiúsculas grossas com contorno, um reenquadre em quase toda frase, batidas mais altas e um flash ocasional num corte.\n<b>Desligada</b> deixa os clipes como estão."
+    },
+    "sound": {
+      "title": "Som, música e palavrões",
+      "body": "Os efeitos sonoros caem nos cortes e no que acontece na tela, nunca em cima de conversa comum. A música vem em sete climas, do tranquilo ao agressivo: deixe em “Combinar com o vídeo” e a IA escolhe um que combine, ou escolha você. Palavrões ganham um bipe e aparecem como f*** nas legendas. Com a edição ligada, cada coisa tem seu interruptor em “Ajuste fino”."
+    },
+    "captions": {
+      "title": "Estilos de legenda animada",
+      "body": "Marca-texto põe a palavra-chave numa caixa, Emoji Drop coloca um emoji sob aquilo de que se fala e Atrás da Cabeça põe uma palavra gigante atrás de quem fala. Cada um assume o visual da sua intensidade e também funciona sozinho, com a edição desligada."
+    }
+  },
+  "dynamic-edits-studio": {
+    "intro": {
+      "title": "Edições dinâmicas no estúdio",
+      "body": "Aqui você muda cada efeito de um clipe antes de exportar, um de cada vez ou todos de uma vez."
+    },
+    "panel": {
+      "title": "A aba Edições",
+      "body": "Mude a intensidade, o clima da música ou os interruptores deste clipe, peça à IA para planejar de novo ou remova tudo. A lista mostra cada momento que a IA escolheu: clique em um para ir até ele. Toda mudança pode ser desfeita."
+    },
+    "lane": {
+      "title": "Cada efeito na linha do tempo",
+      "body": "Cada zoom e cada som é um bloco aqui, e a faixa de música mostra a trilha sob a voz. Arraste um bloco para movê-lo, clique duas vezes para mudá-lo, ou selecione e pressione Delete. Clique duas vezes num espaço vazio para adicionar um som."
+    }
+  },
+  "skip": "Pular"
+}
