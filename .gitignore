@@ -19,8 +19,14 @@ htmlcov/
 build/
 dist/
 
-# Generated StoryClip projects and media
+# Generated StoryClip projects, runtime state, and secrets
 outputs/
+storage/studio.db*
+storage/studio.key
+storage/cartoon_shorts/
+backups/
+debug_render.mjs
+backend/logs/
 
 # Machine-specific tools and agent configuration
 .local-bin/
@@ -28,6 +34,12 @@ local/
 .agents/
 .aws/
 .codex/
+
+# Node dependencies and client frontend
+node_modules
+node_modules/
+client/
+client
 
 # Editor and operating-system files
 .DS_Store

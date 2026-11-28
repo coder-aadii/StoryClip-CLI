@@ -1,0 +1,62 @@
+# StoryClip Noncommercial Source License
+
+Version 1.0 (November 28, 2026)
+
+- **Licensor:** Aditya Aerpule
+- **Commercial permissions:** adityaaerpule@gmail.com
+
+## 1. Software covered
+
+This license applies to **StoryClip** (`video_cli.py`, `tts_service.py`, `speech_alignment.py`, `services/studio_api/`, `tests/`, and original StoryClip modules under `frontend/src/components/story/`, `frontend/src/lib/story-api.ts`, and `frontend/src/app/api/story/`) and accompanying materials, including copies and modified versions (the **Software**).
+
+Separately licensed third-party components remain governed by their own licenses. In particular, the video-clipping `backend/` and SupoClip-derived `frontend/` components remain subject to the **SupoClip Noncommercial Source License v1.1** in `backend/LICENSE` (original repository: https://github.com/FujiwaraChoki/supoclip). Nothing in this license narrows or alters the terms governing those components.
+
+## 2. Noncommercial permissions
+
+Subject to these terms, the Licensor grants you a worldwide, royalty-free, nonexclusive license to use, run, self-host, copy, modify, and share the Software for noncommercial purposes. You may pay for ordinary computing, storage, or network infrastructure to run your own noncommercial instance.
+
+## 3. Individual Creators may monetize without asking
+
+### 3.1 Definitions
+
+An **Individual Creator** is a single natural person who uses the Software on their own behalf and for their own account, and not as an employee, contractor, agent, or representative of a company, agency, or other organization.
+
+**Own Channels** are accounts, channels, pages, and profiles on video and social platforms that the Individual Creator personally owns and controls and publishes under their own name or persona.
+
+**Permitted Monetized Use** means use of the Software by an Individual Creator on a self-hosted instance that only that Individual Creator uses, to create video output and earn money from it solely by publishing to their Own Channels (through platform ad revenue, sponsorships within their own content, affiliate links, memberships, or donations).
+
+### 3.2 Grant
+
+Subject to these terms, the Licensor grants each Individual Creator a worldwide, royalty-free, nonexclusive license to use, run, self-host, copy, and modify the Software for Permitted Monetized Use.
+
+### 3.3 Not Permitted Monetized Use
+
+The following uses are **not** Permitted Monetized Use, even when carried out by one person:
+- Use by, for, or on behalf of a company, agency, or organization (including internal business use or managing an organization's channels).
+- Creating videos or services for another person or organization in exchange for compensation (freelance, agency, or client work).
+- Shared, team, or multi-user commercial access to a single instance.
+- Selling, licensing, or providing the Software or its output as a product or service.
+
+## 4. Other commercial use requires prior written permission
+
+Except for Permitted Monetized Use under Section 3, you must obtain the Licensor's express prior written permission before making any commercial use of the Software, including internal business evaluation or production, compensated client work, selling copies, or distributing modified versions for commercial advantage.
+
+## 5. Commercial hosting requires specific written permission
+
+You must obtain the Licensor's express prior written permission before operating or offering the Software (original, modified, or rebranded) to third parties as a hosted, managed, SaaS, API, or ad-supported service—including a free tier of a commercial offering.
+
+## 6. Attribution and forks
+
+Preserve existing copyright, license, and attribution notices. When you share or distribute the Software or a modified version, include a copy of this `LICENSE` file and clearly credit **StoryClip** (and preserve `backend/LICENSE` and SupoClip attribution for any SupoClip-derived components).
+
+## 7. Your content and third-party APIs
+
+This license grants no rights in the scripts, images, audio, fonts, or videos you process, nor in third-party APIs (Gemini, Pexels, Jamendo, Edge TTS, AssemblyAI, etc.). You are responsible for complying with all third-party terms and synchronization/copyright laws.
+
+## 8. Termination
+
+Your rights under this license end automatically if you breach its terms.
+
+## 9. Warranty and liability
+
+To the extent permitted by applicable law, the Software is provided "AS IS", without warranty of any kind, express or implied, including merchantability, fitness for a particular purpose, and noninfringement. To the extent permitted by law, the Licensor and contributors are not liable for any damages, lost revenue, demonetization, or platform strikes arising from use of the Software.

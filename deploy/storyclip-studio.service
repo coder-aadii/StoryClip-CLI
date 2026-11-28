@@ -1,0 +1,34 @@
+[Unit]
+Description=StoryClip Studio Backend Bridge (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=rails
+Group=rails
+WorkingDirectory=/home/rails/Work/Github-Repos/storyclip_cli
+Environment="PATH=/home/rails/Work/Github-Repos/storyclip_cli/.local-bin:/home/rails/Work/Github-Repos/storyclip_cli/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/home/rails/Work/Github-Repos/storyclip_cli/.env
+ExecStart=/home/rails/Work/Github-Repos/storyclip_cli/.venv/bin/uvicorn services.studio_api.server:app --host 127.0.0.1 --port 8000 --workers 1
+
+# Process management & automated restart
+Restart=always
+RestartSec=5s
+
+# Resource Constraints & Scheduling Priorities
+# Run at low CPU & IO priority so background video renders do not lock out interactive SSH/UI
+Nice=10
+CPUSchedulingPolicy=other
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+
+# Security Sandboxing in systemd
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+# File descriptor limits for video encoding and WebSocket streams
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
