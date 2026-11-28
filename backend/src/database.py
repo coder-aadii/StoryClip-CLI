@@ -1,0 +1,188 @@
+import os
+from pathlib import Path
+
+from .sql_statements import split_sql_statements
+
+from dotenv import load_dotenv
+from sqlalchemy import text
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+# Load environment variables (prefer repo-root .env, then local fallback)
+_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
+if _ROOT_ENV.is_file():
+    load_dotenv(_ROOT_ENV)
+load_dotenv()
+
+DEFAULT_DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql+asyncpg://localhost:5432/supoclip"
+)
+
+_database_url_override: str | None = None
+_engine_override: AsyncEngine | None = None
+_session_maker_override: async_sessionmaker[AsyncSession] | None = None
+_engine: AsyncEngine | None = None
+_session_maker: async_sessionmaker[AsyncSession] | None = None
+
+
+# Base class for all models
+class Base(DeclarativeBase):
+    pass
+
+
+def _build_engine(database_url: str) -> AsyncEngine:
+    if database_url.startswith("postgresql://"):
+        database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
+    elif database_url.startswith("postgres://"):
+        database_url = "postgresql+asyncpg://" + database_url[len("postgres://"):]
+    pool_size = int(os.getenv("DATABASE_POOL_SIZE", "5"))
+    max_overflow = int(os.getenv("DATABASE_MAX_OVERFLOW", "0"))
+    pool_timeout = int(os.getenv("DATABASE_POOL_TIMEOUT_SECONDS", "10"))
+    # A pooled connection unused this long is closed by PostgreSQL. Without it every
+    # process keeps its busiest moment's connections for life, so a draining release
+    # slot holds its whole pool. 0 leaves it off (PostgreSQL before 14 rejects it).
+    idle_session_timeout = int(os.getenv("DATABASE_IDLE_SESSION_TIMEOUT_SECONDS", "0"))
+    if pool_size < 1 or max_overflow < 0 or pool_timeout < 1:
+        raise ValueError("Database pool size and timeout must be positive; overflow must be nonnegative")
+    if idle_session_timeout < 0:
+        raise ValueError("Database idle session timeout must be nonnegative")
+    # Safety net for the primary leak fix in api/routes/tasks.py
+    # (get_clip_file/export_clip release their session before streaming):
+    # any session parked mid-transaction this long is leaked, not legitimately
+    # busy. Killing it returns the connection to the pool instead of letting
+    # it accumulate toward QueuePool exhaustion.
+    server_settings = {"idle_in_transaction_session_timeout": "300000"}
+    if idle_session_timeout:
+        server_settings["idle_session_timeout"] = str(idle_session_timeout * 1000)
+    return create_async_engine(
+        database_url,
+        echo=False,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
+        pool_timeout=pool_timeout,
+        # pre-ping replaces a connection the server closed for idleness, and LIFO
+        # lets a trickle of queries (health checks) reuse one connection so the
+        # rest can go idle instead of each being touched in turn.
+        pool_pre_ping=True,
+        pool_use_lifo=True,
+        pool_recycle=3600,
+        # Advisory lock holders sit idle outside a transaction, so they use their
+        # own engine (session_lock_connection, sync_db) without these settings.
+        connect_args={"server_settings": server_settings},
+    )
+
+
+def get_database_url() -> str:
+    return _database_url_override or os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+def configure_database(
+    *,
+    database_url: str | None = None,
+    engine: AsyncEngine | None = None,
+    session_maker: async_sessionmaker[AsyncSession] | None = None,
+) -> None:
+    global _database_url_override, _engine_override, _session_maker_override
+    _database_url_override = database_url
+    _engine_override = engine
+    _session_maker_override = session_maker
+
+
+def get_engine() -> AsyncEngine:
+    global _engine
+    if _engine_override is not None:
+        return _engine_override
+    if _engine is None:
+        _engine = _build_engine(get_database_url())
+    return _engine
+
+
+def get_session_maker() -> async_sessionmaker[AsyncSession]:
+    global _session_maker
+    if _session_maker_override is not None:
+        return _session_maker_override
+    if _session_maker is None:
+        _session_maker = async_sessionmaker(
+            get_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+    return _session_maker
+
+
+def AsyncSessionLocal() -> AsyncSession:
+    return get_session_maker()()
+
+
+# Dependency to get database session
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+# Initialize database
+async def init_db():
+    async with get_engine().begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version VARCHAR(255) PRIMARY KEY,
+                    applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+
+        migrations_dir = Path(__file__).parent / "migrations" / "sql"
+        if migrations_dir.exists():
+            files = sorted([p for p in migrations_dir.glob("*.sql") if p.is_file()])
+            for migration_file in files:
+                version = migration_file.name
+                already_applied = await conn.execute(
+                    text(
+                        "SELECT 1 FROM schema_migrations WHERE version = :version LIMIT 1"
+                    ),
+                    {"version": version},
+                )
+                if already_applied.scalar() is not None:
+                    continue
+
+                sql = migration_file.read_text()
+                # asyncpg doesn't support multiple statements in one execute(),
+                # so split outside quoted function bodies and strings.
+                for statement in split_sql_statements(sql):
+                    statement = statement.strip()
+                    if statement:
+                        await conn.execute(text(statement))
+                await conn.execute(
+                    text("INSERT INTO schema_migrations (version) VALUES (:version)"),
+                    {"version": version},
+                )
+
+
+# Close database connections
+async def close_db():
+    global _engine, _session_maker
+    engine = _engine_override or _engine
+    if engine is not None:
+        await engine.dispose()
+    _engine = None
+    _session_maker = None
+
+
+async def reset_database_state() -> None:
+    global _database_url_override, _engine_override, _session_maker_override
+    await close_db()
+    _database_url_override = None
+    _engine_override = None
+    _session_maker_override = None

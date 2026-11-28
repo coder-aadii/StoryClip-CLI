@@ -27,6 +27,9 @@ storage/cartoon_shorts/
 backups/
 debug_render.mjs
 backend/logs/
+backend/temp/
+backend/uploads/
+backend/output/
 
 # Machine-specific tools and agent configuration
 .local-bin/

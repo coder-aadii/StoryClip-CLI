@@ -1,0 +1,34 @@
+from html import escape
+from typing import Optional
+
+from ..config import Config
+from ..models import User
+from .email_layout import email_button
+from .email_service import EmailContent, SesEmailService, first_name_for
+
+
+class VerificationEmailService:
+    """Deliver Better Auth's signed, one-hour email ownership link."""
+
+    def __init__(self, config: Optional[Config] = None):
+        self.email_service = SesEmailService(config)
+
+    async def send_verification_email(self, user: User, url: str) -> dict:
+        name = first_name_for(first_name=user.first_name, full_name=user.name)
+        content = EmailContent(
+            subject="Verify your SupoClip email address",
+            html=(
+                f"<p>Hi {escape(name)},</p>"
+                "<p>Confirm this is your email address to use it with SupoClip.</p>"
+                + email_button(url, "Verify email address")
+                + "<p>This link expires in 1 hour. If you did not sign up for SupoClip "
+                "or request this, you can ignore this email.</p><p>Team SupoClip</p>"
+            ),
+            text=(
+                f"Hi {name},\n\nConfirm this is your email address to use it with SupoClip.\n\n"
+                f"Verify email address: {url}\n\n"
+                "This link expires in 1 hour. If you did not sign up for SupoClip "
+                "or request this, you can ignore this email.\n\nTeam SupoClip"
+            ),
+        )
+        return await self.email_service.send_email(user.email, content)

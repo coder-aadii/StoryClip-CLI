@@ -1,0 +1,917 @@
+"""Ffmpeg helpers for the video pipeline."""
+
+from contextlib import contextmanager
+from typing import Iterator
+from typing import List
+from typing import Optional
+from pathlib import Path
+from typing import Tuple
+from ..clip_source_map import normalize_source_ranges
+from ..config import get_config
+import json
+import re
+import subprocess
+import tempfile
+from .common import (
+    AUDIO_BITRATE,
+    CLIP_END_AUDIO_FADE_SECONDS,
+    CLIP_START_AUDIO_FADE_SECONDS,
+    CROSSFADE_MAX_SECONDS,
+    FINAL_VIDEO_CRF,
+    FINAL_VIDEO_PRESET,
+    INTERMEDIATE_CRF,
+    LOUDNORM_FILTER,
+    OUTPUT_FPS,
+    logger,
+)
+
+
+def round_to_even(value: int) -> int:
+    """Round integer to nearest even number for H.264 compatibility."""
+    return value - (value % 2)
+
+
+def clamp_even(value: int, minimum: int, maximum: int) -> int:
+    """Clamp an integer to an even value within inclusive bounds."""
+    if maximum < minimum:
+        return round_to_even(minimum)
+    return round_to_even(max(minimum, min(value, maximum)))
+
+
+def run_ffmpeg_command(command: List[str], timeout: int = 900) -> subprocess.CompletedProcess:
+    """Run ffmpeg/ffprobe and log stderr on failure."""
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        logger.error("Command failed: %s\n%s", " ".join(command), result.stderr[-4000:])
+    return result
+
+
+def ffprobe_has_audio(video_path: Path) -> bool:
+    result = run_ffmpeg_command(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "csv=p=0",
+            str(video_path),
+        ],
+        timeout=60,
+    )
+    return result.returncode == 0 and "audio" in result.stdout
+
+
+# ISO 639-1 → ISO 639-2 (B and T forms) for the languages container tags most
+# often carry, so an explicit TRANSCRIPTION_LANGUAGE can pick the matching track.
+_ISO_639_2_CODES = {
+    "ar": {"ara"}, "bg": {"bul"}, "ca": {"cat"}, "cs": {"ces", "cze"},
+    "da": {"dan"}, "de": {"deu", "ger"}, "el": {"ell", "gre"}, "en": {"eng"},
+    "es": {"spa"}, "fa": {"fas", "per"}, "fi": {"fin"}, "fr": {"fra", "fre"},
+    "he": {"heb"}, "hi": {"hin"}, "hr": {"hrv"}, "hu": {"hun"}, "id": {"ind"},
+    "it": {"ita"}, "ja": {"jpn"}, "ko": {"kor"}, "ms": {"msa", "may"},
+    "nl": {"nld", "dut"}, "no": {"nor", "nob", "nno"}, "pl": {"pol"},
+    "pt": {"por"}, "ro": {"ron", "rum"}, "ru": {"rus"}, "sk": {"slk", "slo"},
+    "sv": {"swe"}, "th": {"tha"}, "tr": {"tur"}, "uk": {"ukr"}, "ur": {"urd"},
+    "vi": {"vie"}, "zh": {"zho", "chi"},
+}
+# Commentary, audio-description and dub tracks are never the primary dialogue.
+_SECONDARY_AUDIO_DISPOSITIONS = ("comment", "visual_impaired", "hearing_impaired", "dub")
+
+
+def _audio_language_matches(tag: str, preferred_language: str) -> bool:
+    tag = tag.strip().lower()
+    base = preferred_language.strip().lower().replace("-", "_").split("_", 1)[0]
+    return tag == base or tag in _ISO_639_2_CODES.get(base, set())
+
+
+def select_audio_stream_index(
+    video_path: Path, preferred_language: Optional[str] = None
+) -> Optional[int]:
+    """Pick the dialogue audio track, as an index for ``0:a:N``, or None if silent.
+
+    Transcription and every render of the source must read the same track;
+    ffmpeg's implicit choice (most channels) and ``[0:a]`` (first track) can
+    differ on multi-track uploads, desyncing captions from the audio.
+    ``preferred_language`` defaults to the configured TRANSCRIPTION_LANGUAGE.
+    """
+    if preferred_language is None:
+        preferred_language = get_config().transcription_language
+    result = run_ffmpeg_command(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index:stream_tags=language:stream_disposition",
+            "-of",
+            "json",
+            str(video_path),
+        ],
+        timeout=60,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        streams = json.loads(result.stdout or "{}").get("streams") or []
+    except ValueError:
+        return None
+    if not streams:
+        return None
+
+    def rank(item: Tuple[int, dict]) -> Tuple[int, int, int, int]:
+        position, stream = item
+        disposition = stream.get("disposition") or {}
+        language = (stream.get("tags") or {}).get("language") or ""
+        language_miss = int(
+            bool(preferred_language)
+            and not _audio_language_matches(language, preferred_language or "")
+        )
+        secondary = int(any(disposition.get(key) for key in _SECONDARY_AUDIO_DISPOSITIONS))
+        not_primary = int(not (disposition.get("default") or disposition.get("original")))
+        return language_miss, secondary, not_primary, position
+
+    return min(enumerate(streams), key=rank)[0]
+
+
+def audio_stream_map_args(audio_stream: Optional[int]) -> List[str]:
+    """Explicit ``-map`` args for the first video track plus the chosen audio."""
+    args = ["-map", "0:v:0"]
+    if audio_stream is not None:
+        args += ["-map", f"0:a:{audio_stream}"]
+    return args
+
+
+def stream_rotation_degrees(stream: dict) -> int:
+    """Display rotation in degrees from a stream's rotate tag or display matrix.
+
+    ``tags.rotate`` wins when it parses. Otherwise the first side-data
+    ``rotation`` is used (ffprobe's display-matrix angle). ``0`` means the
+    coded frame is already the displayed orientation.
+    """
+    tags = stream.get("tags") or {}
+    raw = tags.get("rotate")
+    if raw is not None:
+        try:
+            return int(round(float(raw)))
+        except (TypeError, ValueError):
+            pass
+    for side in stream.get("side_data_list") or []:
+        if not isinstance(side, dict) or "rotation" not in side:
+            continue
+        try:
+            return int(round(float(side["rotation"])))
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def displayed_video_size(width: int, height: int, rotation: int) -> Tuple[int, int]:
+    """Pixel size after a 90° or 270° display rotation.
+
+    Matches ``VideoGeometry.display_width`` / ``display_height`` for square
+    pixels. Sample aspect ratio is not applied: crop and scale filters address
+    stored pixels, and anamorphic sources are squared only by normalization.
+    """
+    if abs(rotation) % 180 == 90:
+        return height, width
+    return width, height
+
+
+def parse_ffprobe_video_size(payload: object) -> Tuple[int, int]:
+    """Displayed size of the first video stream in an ffprobe JSON document.
+
+    Extra streams and side-data entries are ignored. A display-matrix rotation
+    of 90° or 270° swaps the coded width and height, because ffmpeg autorotates
+    before user filters unless ``-noautorotate`` is set.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("ffprobe size payload is not an object")
+    streams = payload.get("streams")
+    if not isinstance(streams, list):
+        raise ValueError("ffprobe returned no video stream")
+    stream = None
+    for candidate in streams:
+        if not isinstance(candidate, dict):
+            continue
+        codec_type = candidate.get("codec_type")
+        if codec_type not in (None, "video"):
+            continue
+        if "width" not in candidate or "height" not in candidate:
+            continue
+        stream = candidate
+        break
+    if stream is None:
+        raise ValueError("ffprobe returned no video stream")
+    try:
+        width = int(stream["width"])
+        height = int(stream["height"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("ffprobe returned invalid video dimensions") from exc
+    if width <= 0 or height <= 0:
+        raise ValueError("ffprobe returned invalid video dimensions")
+    return displayed_video_size(width, height, stream_rotation_degrees(stream))
+
+
+def ffprobe_video_size(video_path: Path) -> Tuple[int, int]:
+    """Displayed pixel size of the first video stream.
+
+    The probe is JSON, not ``csv=s=x``. A stream with side data (a display
+    matrix, HDR metadata, SEI) makes that csv writer emit a trailing separator,
+    so ``1920x1080`` becomes ``1920x1080x`` and ``split("x", 1)`` leaves the
+    height as ``1080x``.
+
+    The returned size is the one ffmpeg filters see. Autorotate is on by
+    default and this pipeline never passes ``-noautorotate``, so a phone file
+    stored as 1920×1080 with rotation -90 is 1080×1920 inside crop, scale, and
+    rawvideo analysis.
+    """
+    result = run_ffmpeg_command(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height,codec_type:stream_tags=rotate:stream_side_data=rotation",
+            "-of",
+            "json",
+            str(video_path),
+        ],
+        timeout=60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Unable to read video size for {video_path}")
+    try:
+        payload = json.loads(result.stdout or "")
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Unable to read video size for {video_path}: probe output was not JSON"
+        ) from exc
+    try:
+        return parse_ffprobe_video_size(payload)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Unable to read video size for {video_path}: {exc}") from exc
+
+
+def ffprobe_duration(video_path: Path, timeout: int = 60) -> float:
+    result = run_ffmpeg_command(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video_path),
+        ],
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Unable to read duration for {video_path}")
+    try:
+        return max(0.0, float(result.stdout.strip()))
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid duration for {video_path}") from exc
+
+
+def ffmpeg_escape_filter_value(value: str) -> str:
+    """Escape a value for use as a filter option inside an ffmpeg filtergraph.
+
+    ffmpeg unescapes filter arguments twice: once when splitting the
+    filtergraph (special: backslash, quote, ``[ ] , ;``) and once when
+    splitting a filter's ``key=value:...`` options (special: backslash,
+    quote, colon). Escaping for both levels keeps Windows drive colons,
+    backslashes, apostrophes and brackets in paths intact.
+    """
+    option_level = re.sub(r"([\\':])", r"\\\1", str(value))
+    return re.sub(r"([\\'\[\],;])", r"\\\1", option_level)
+
+
+def ffmpeg_escape_filter_path(path: Path) -> str:
+    """Escape a filesystem path for use as an ffmpeg filter option value."""
+    return ffmpeg_escape_filter_value(str(path))
+
+
+# A source's chapters describe the whole video. Copied into a clip they keep the
+# source's times, and MP4 stores them as a text track as long as the source.
+NO_CHAPTERS = ("-map_chapters", "-1")
+
+
+def build_final_video_encode_args(
+    crf: int = FINAL_VIDEO_CRF,
+    preset: str = FINAL_VIDEO_PRESET,
+    fps: int | str = OUTPUT_FPS,
+    level: str = "4.1",
+) -> List[str]:
+    """libx264 args for the quality-determining final pass (CFR, H.264 High).
+
+    Level 4.1 covers 1080p30. Original-format output at 60 fps (or 59.94)
+    needs 4.2 or x264 rejects the stream.
+    """
+    return [
+        *NO_CHAPTERS,
+        "-c:v", "libx264",
+        "-preset", preset,
+        "-crf", str(crf),
+        "-pix_fmt", "yuv420p",
+        "-profile:v", "high",
+        "-level", level,
+        "-r", str(fps),
+        "-x264-params", "keyint=120:min-keyint=30:scenecut=40",
+    ]
+
+
+def cap_video_short_side(video_path: Path, short_side: int) -> bool:
+    """Downscale a rendered clip in place so its shorter side is at most
+    ``short_side`` pixels. Returns whether the file changed.
+
+    Rendering always happens at 1080 wide so captions and overlays keep their
+    layout; plans with a lower output resolution get this final pass.
+    """
+    width, height = ffprobe_video_size(video_path)
+    if min(width, height) <= short_side:
+        return False
+    scale = short_side / min(width, height)
+    target_width = round_to_even(round(width * scale))
+    target_height = round_to_even(round(height * scale))
+    capped_path = video_path.with_name(f".{video_path.stem}.capped{video_path.suffix}")
+    command = [
+        "ffmpeg", "-y", "-v", "error",
+        "-i", str(video_path),
+        "-map", "0:v:0", "-map", "0:a?",
+        "-vf", f"scale={target_width}:{target_height}:flags=lanczos,setsar=1",
+        *build_final_video_encode_args(),
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        str(capped_path),
+    ]
+    result = run_ffmpeg_command(command)
+    if result.returncode != 0 or not capped_path.exists():
+        capped_path.unlink(missing_ok=True)
+        raise RuntimeError(f"Unable to downscale {video_path}: {result.stderr[-500:]}")
+    capped_path.replace(video_path)
+    return True
+
+
+def audio_edge_fades(duration: float, fade_seconds: float = CLIP_END_AUDIO_FADE_SECONDS) -> str:
+    """``afade`` pair that brings audio of length ``duration`` up from silence at its very start and down to
+    silence at its very end.
+
+    A clip's cut points are chosen in the silence around its first and last word, so the fades only remove
+    the click a hard cut can leave. Where speech runs on without a breath there is no silence, and the fades
+    are what keeps the cut from sounding chopped. The opening fade is half as long as the closing one: a
+    first consonant is shorter than a last one.
+    """
+    fade = max(0.0, min(fade_seconds, duration / 2))
+    opening = max(0.0, min(CLIP_START_AUDIO_FADE_SECONDS, duration / 2))
+    return f"afade=t=in:st=0:d={opening:.3f},afade=t=out:st={max(0.0, duration - fade):.3f}:d={fade:.3f}"
+
+
+def build_audio_output_args(has_audio: bool, loudnorm: bool = True) -> List[str]:
+    """Audio encode args (with optional loudness normalisation) or `-an`."""
+    if not has_audio:
+        return ["-an"]
+    args: List[str] = []
+    if loudnorm:
+        args += ["-af", LOUDNORM_FILTER]
+    args += ["-c:a", "aac", "-b:a", AUDIO_BITRATE, "-ar", "48000"]
+    return args
+
+
+def subtitles_filter_fragment(
+    ass_path: Path, fonts_dir: Optional[Path] = None
+) -> str:
+    """ffmpeg `subtitles` filter fragment burning an ASS file (with fonts dir)."""
+    fragment = f"subtitles=filename={ffmpeg_escape_filter_path(ass_path)}"
+    if fonts_dir:
+        fragment += f":fontsdir={ffmpeg_escape_filter_path(fonts_dir)}"
+    return fragment
+
+
+def crossfade_fade_for_ranges(keep_ranges: List[Tuple[float, float]]) -> float:
+    """Crossfade duration render_source_ranges will use, or 0.0 for hard concat.
+
+    A single source of truth so caption timing (which compacts the same ranges)
+    stays perfectly in sync with the crossfade-shortened video timeline.
+    """
+    ranges = normalize_source_ranges(keep_ranges)
+    if len(ranges) < 2 or len(ranges) > 8:
+        return 0.0
+    # A hook teaser plays ranges out of source order; hard-cut out of the cold
+    # open so persisted source maps (which assume concatenation) stay exact.
+    if any(ranges[i + 1][0] < ranges[i][0] for i in range(len(ranges) - 1)):
+        return 0.0
+    durations = [end - start for start, end in ranges]
+    if min(durations) < 0.45:
+        return 0.0
+    fade = min(CROSSFADE_MAX_SECONDS, min(durations) * 0.5)
+    return fade if fade >= 0.06 else 0.0
+
+
+def output_offsets_for_ranges(keep_ranges: List[Tuple[float, float]]) -> List[float]:
+    """Where each kept range starts on the rendered clip timeline.
+
+    Each crossfade overlaps the two neighbouring ranges, so every junction
+    pulls the following ranges ``fade`` seconds earlier. Captions, headline
+    timing and stored durations all read the timeline through this mapping.
+    """
+    ranges = normalize_source_ranges(keep_ranges)
+    fade = crossfade_fade_for_ranges(ranges)
+    offsets: List[float] = []
+    cursor = 0.0
+    for index, (start, end) in enumerate(ranges):
+        if index > 0:
+            cursor -= fade
+        offsets.append(cursor)
+        cursor += end - start
+    return offsets
+
+
+def rendered_ranges_duration(keep_ranges: List[Tuple[float, float]]) -> float:
+    """Length of the clip render_source_ranges_ffmpeg produces for these ranges."""
+    ranges = normalize_source_ranges(keep_ranges)
+    if not ranges:
+        return 0.0
+    offsets = output_offsets_for_ranges(ranges)
+    return max(0.0, offsets[-1] + ranges[-1][1] - ranges[-1][0])
+
+
+def rendered_clip_duration(
+    clip_path: Path,
+    keep_ranges: List[Tuple[float, float]],
+    output_offsets: Optional[List[float]] = None,
+) -> float:
+    """Playback length of a finished clip, probed from the file when possible.
+
+    Teasers, crossfades, frame rounding and resolution caps all change the
+    final length, so the file is the authority; the range mapping (with the
+    clip's explicit ``output_offsets`` when it has them) is only the fallback
+    when the file cannot be probed.
+    """
+    try:
+        clip_path = Path(clip_path)
+        probed = ffprobe_duration(clip_path) if clip_path.exists() else 0.0
+    except Exception:
+        probed = 0.0
+    if probed > 0:
+        return probed
+    ranges = normalize_source_ranges(keep_ranges)
+    if output_offsets is not None and ranges and len(output_offsets) == len(ranges):
+        return max(0.0, float(output_offsets[-1]) + ranges[-1][1] - ranges[-1][0])
+    return rendered_ranges_duration(keep_ranges)
+
+
+def junction_fades_for_offsets(
+    keep_ranges: List[Tuple[float, float]], output_offsets: List[float]
+) -> List[float]:
+    """Crossfade length at every junction implied by explicit output offsets (0 = hard cut)."""
+    ranges = normalize_source_ranges(keep_ranges)
+    return [
+        max(0.0, output_offsets[i - 1] + ranges[i - 1][1] - ranges[i - 1][0] - output_offsets[i])
+        for i in range(1, len(ranges))
+    ]
+
+
+# A clip whose ranges are spread thinly over a long stretch of source (a
+# trailer's beats, a recap's points) is decoded range by range; decoding the
+# whole window would read minutes of video to keep seconds of it.
+SPARSE_MIN_SPAN_SECONDS = 120.0
+SPARSE_SPAN_TO_KEPT_RATIO = 3.0
+SPARSE_MAX_INPUTS = 24
+SPARSE_INPUT_PADDING_SECONDS = 0.5
+# Ranges this close in the source (a point's cleanup pieces, neighbouring
+# beats) share one input: decoding the short gap is cheaper than another input.
+SPARSE_SHARED_INPUT_GAP_SECONDS = 15.0
+
+
+def _sparse(keep_ranges: List[Tuple[float, float]]) -> bool:
+    if len(keep_ranges) < 2:
+        return False
+    span = max(end for _, end in keep_ranges) - min(start for start, _ in keep_ranges)
+    kept = sum(end - start for start, end in keep_ranges)
+    return span > SPARSE_MIN_SPAN_SECONDS and span > SPARSE_SPAN_TO_KEPT_RATIO * kept
+
+
+def _plays_in_source_order(keep_ranges: List[Tuple[float, float]]) -> bool:
+    """True when every range starts at or after the end of the one played before it."""
+    return all(
+        keep_ranges[index + 1][0] >= keep_ranges[index][1] - 1e-6
+        for index in range(len(keep_ranges) - 1)
+    )
+
+
+def _sparse_windows(keep_ranges: List[Tuple[float, float]]) -> Tuple[List[Tuple[float, float]], List[int]]:
+    """Padded (origin, length) source windows, and the window each range is read from.
+
+    Ranges whose padded windows lie within ``SPARSE_SHARED_INPUT_GAP_SECONDS``
+    of each other share a window only when they also play in that window's
+    source order. ffmpeg decodes an input front to back, so a range read from
+    a shared window before an earlier-playing one would sit in the filtergraph
+    as raw frames until the earlier one drained (gigabytes at 1080p).
+    """
+    order = sorted(range(len(keep_ranges)), key=lambda index: keep_ranges[index][0])
+    # [origin, stop, last range played from the window]
+    spans: List[List[float]] = []
+    owners = [0] * len(keep_ranges)
+    for index in order:
+        start, end = keep_ranges[index]
+        origin = max(0.0, start - SPARSE_INPUT_PADDING_SECONDS)
+        stop = end + SPARSE_INPUT_PADDING_SECONDS
+        if spans:
+            last = int(spans[-1][2])
+            shares = (
+                origin <= spans[-1][1] + SPARSE_SHARED_INPUT_GAP_SECONDS
+                and index > last
+                and start >= keep_ranges[last][1] - 1e-6
+            )
+        else:
+            shares = False
+        if shares:
+            spans[-1][1] = max(spans[-1][1], stop)
+            spans[-1][2] = index
+        else:
+            spans.append([origin, stop, index])
+        owners[index] = len(spans) - 1
+    return [(origin, stop - origin) for origin, stop, _ in spans], owners
+
+
+@contextmanager
+def _range_inputs(
+    video_path: Path,
+    keep_ranges: List[Tuple[float, float]],
+    audio_stream: Optional[int],
+    scratch_dir: Path,
+) -> Iterator[Tuple[List[str], List[Tuple[int, float]], Optional[int]]]:
+    """Input arguments, then (input index, trim origin) per range, then the audio stream to read.
+
+    Dense ranges played in source order share one seeked input window. Sparse
+    ranges, and ranges that jump back in the source (a trailer's cold open, a
+    hook teaser), are grouped into padded windows of nearby ranges, one input
+    each, so ffmpeg reads every window only when the stitch reaches it; past
+    ``SPARSE_MAX_INPUTS`` windows every window is first cut to its own small
+    file in ``scratch_dir`` so the stitch never opens the long source dozens
+    of times.
+    """
+    if not _sparse(keep_ranges) and _plays_in_source_order(keep_ranges):
+        seek_args, origin = _input_window_for_ranges(keep_ranges)
+        yield [*seek_args, "-i", str(video_path)], [(0, origin)] * len(keep_ranges), audio_stream
+        return
+
+    windows, owners = _sparse_windows(keep_ranges)
+    sources = [(owner, windows[owner][0]) for owner in owners]
+    if len(windows) <= SPARSE_MAX_INPUTS:
+        args: List[str] = []
+        for origin, length in windows:
+            args += ["-ss", f"{origin:.3f}", "-t", f"{length:.3f}", "-i", str(video_path)]
+        yield args, sources, audio_stream
+        return
+
+    with tempfile.TemporaryDirectory(prefix="ranges_", dir=scratch_dir) as work_dir:
+        args = []
+        for index, (origin, length) in enumerate(windows):
+            piece = Path(work_dir) / f"r{index}.mp4"
+            command = [
+                "ffmpeg", "-y", "-ss", f"{origin:.3f}", "-i", str(video_path),
+                *audio_stream_map_args(audio_stream),
+                "-t", f"{length:.3f}",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", str(INTERMEDIATE_CRF),
+                "-pix_fmt", "yuv420p",
+            ]
+            if audio_stream is not None:
+                command += ["-c:a", "aac", "-b:a", "192k"]
+            command.append(str(piece))
+            if run_ffmpeg_command(command).returncode != 0:
+                raise RuntimeError(f"Could not cut window {index + 1} of a sparse clip")
+            args += ["-i", str(piece)]
+        # Each piece holds only the chosen audio track.
+        yield args, sources, 0 if audio_stream is not None else None
+
+
+def _crossfade_video_frames(
+    durations: List[float], fades: List[float]
+) -> Tuple[List[float], List[int], List[int]]:
+    """Whole-frame layout of a crossfaded clip: (lead seconds, frames, overlaps).
+
+    xfade counts frames and ends its first input exactly where the frames run
+    out. Offsets worked out from range lengths in seconds can land past the
+    last frame (5.11 s holds 153 frames at 30 fps, but 14.55 s rounds to frame
+    437), and then xfade passes the second input through with its timestamps
+    restarted at zero. Those frames sit behind the encoder's clock and are
+    dropped: the picture freezes while the audio plays on.
+
+    So every range gets an exact frame count and every overlap is taken from
+    those counts. Edges round to the nearest output frame on the clip's own
+    timeline, which leaves video at most half a frame from the audio at any
+    point instead of adding up an error per range. ``lead`` is how far that
+    rounding moved a range's first frame from its planned time, so the range
+    can start reading the source by the same amount.
+    """
+    leads: List[float] = []
+    counts: List[int] = []
+    overlaps: List[int] = []
+    position = 0.0
+    previous_end = 0
+    for index, duration in enumerate(durations):
+        if index > 0:
+            position += durations[index - 1] - fades[index - 1]
+        first = round(position * OUTPUT_FPS)
+        end = round((position + duration) * OUTPUT_FPS)
+        leads.append(first / OUTPUT_FPS - position)
+        counts.append(max(1, end - first))
+        if index > 0:
+            overlaps.append(max(0, previous_end - first) if fades[index - 1] > 1e-6 else 0)
+        previous_end = end
+    return leads, counts, overlaps
+
+
+def render_ranges_crossfade_ffmpeg(
+    video_path: Path,
+    keep_ranges: List[Tuple[float, float]],
+    output_path: Path,
+    audio_stream: Optional[int],
+    transition: str = "fade",
+    output_offsets: Optional[List[float]] = None,
+) -> bool:
+    """Stitch kept ranges together with short crossfades instead of hard cuts.
+
+    Turns the abrupt jump cuts left by pause/filler removal into quick, smooth
+    dissolves (video xfade + audio acrossfade), which read as intentional,
+    polished transitions.
+
+    Each range is read off a constant-rate copy of its input, not trimmed from
+    the source's own frames, so its frame count does not depend on the source's
+    frame rate: a low-rate or variable-rate source would otherwise hand xfade
+    ranges that end up to a whole source frame early, or hold no frame at all.
+    """
+    keep_ranges = normalize_source_ranges(keep_ranges)
+    n = len(keep_ranges)
+    if n < 2:
+        return False
+    durations = [end - start for start, end in keep_ranges]
+    fade = crossfade_fade_for_ranges(keep_ranges)
+    if output_offsets is not None:
+        fades = junction_fades_for_offsets(keep_ranges, output_offsets)
+    else:
+        fades = [fade] * (n - 1)
+    if not any(fades):
+        return False
+    with _range_inputs(video_path, keep_ranges, audio_stream, Path(output_path).parent) as (
+        input_args, sources, audio_stream,
+    ):
+        has_audio = audio_stream is not None
+        leads, frame_counts, overlaps = _crossfade_video_frames(durations, fades)
+
+        parts: List[str] = []
+        for idx, ((start, end), (source, origin)) in enumerate(zip(keep_ranges, sources)):
+            rel_start, rel_end = start - origin, end - origin
+            first_frame = max(0, round((rel_start + leads[idx]) * OUTPUT_FPS))
+            # tpad holds the last frame when the source runs out before the range
+            # does. setpts clears the link's frame rate and xfade needs one, hence
+            # the second fps; the frames are already on its grid, so it changes none.
+            parts.append(
+                f"[{source}:v]fps={OUTPUT_FPS}:start_time=0,tpad=stop=-1:stop_mode=clone,"
+                f"trim=start_frame={first_frame}:end_frame={first_frame + frame_counts[idx]},"
+                f"setpts=PTS-STARTPTS,fps={OUTPUT_FPS},format=yuv420p,setsar=1[v{idx}]"
+            )
+            if has_audio:
+                parts.append(
+                    f"[{source}:a:{audio_stream}]atrim=start={rel_start:.3f}:end={rel_end:.3f},asetpts=PTS-STARTPTS[a{idx}]"
+                )
+
+        cur_v = "[v0]"
+        played_frames = frame_counts[0]
+        for i in range(1, n):
+            overlap = overlaps[i-1]
+            out = f"[vx{i}]"
+            # concat outputs a microsecond timebase and xfade refuses inputs
+            # whose timebases differ, so a hard cut is put back on the frame
+            # timebase before a later junction dissolves out of it.
+            parts.append(f"{cur_v}[v{i}]concat=n=2:v=1:a=0,settb=1/{OUTPUT_FPS}{out}" if overlap == 0 else
+                f"{cur_v}[v{i}]xfade=transition={transition}:duration={overlap / OUTPUT_FPS:.6f}"
+                f":offset={(played_frames - overlap) / OUTPUT_FPS:.6f}{out}")
+            played_frames += frame_counts[i] - overlap
+            cur_v = out
+
+        map_args = ["-map", cur_v]
+        if has_audio:
+            cur_a = "[a0]"
+            for i in range(1, n):
+                out = f"[ax{i}]"
+                fade = fades[i-1]
+                parts.append(f"{cur_a}[a{i}]concat=n=2:v=0:a=1{out}" if fade <= 1e-6 else f"{cur_a}[a{i}]acrossfade=d={fade:.6f}{out}")
+                cur_a = out
+            played = sum(durations) - sum(fade for fade in fades if fade > 1e-6)
+            parts.append(f"{cur_a}{audio_edge_fades(played)}[afinal]")
+            map_args += ["-map", "[afinal]"]
+
+        command = [
+            "ffmpeg", "-y", *input_args,
+            "-filter_complex", ";".join(parts),
+            *map_args,
+            *NO_CHAPTERS,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", str(INTERMEDIATE_CRF),
+            "-pix_fmt", "yuv420p",
+        ]
+        if has_audio:
+            command += ["-c:a", "aac", "-b:a", "192k"]
+        command += ["-movflags", "+faststart", str(output_path)]
+        return run_ffmpeg_command(command, timeout=1800).returncode == 0
+
+
+def _input_window_for_ranges(
+    keep_ranges: List[Tuple[float, float]],
+) -> Tuple[List[str], float]:
+    """Seek to the first kept moment and stop just after the last one.
+
+    Multi-range trims used to open the source at t=0, so a 40s clip taken from
+    minute 30 decoded the whole prefix. Timestamps after `-ss` (before `-i`)
+    start at 0, so callers subtract the returned origin from every trim.
+    """
+    origin = min(start for start, _ in keep_ranges)
+    end = max(end for _, end in keep_ranges)
+    # A few dozen milliseconds at the head is not worth a seek. Shifting trims
+    # without seeking would start each piece early, so leave those timestamps
+    # absolute.
+    if origin <= 0.05:
+        origin = 0.0
+    args: List[str] = []
+    if origin > 0:
+        args.extend(["-ss", f"{origin:.3f}"])
+    args.extend(["-t", f"{max(0.2, end - origin + 1.0):.3f}"])
+    return args, origin
+
+
+def render_source_ranges_ffmpeg(
+    video_path: Path,
+    keep_ranges: List[Tuple[float, float]],
+    output_path: Path,
+    output_offsets: Optional[List[float]] = None,
+) -> bool:
+    """Render source ranges into one intermediate clip using ffmpeg only.
+
+    ``output_offsets`` (one per range) set where each range starts on the
+    clip timeline: a range starting before the previous one ends crossfades
+    into it, anything else is a hard cut. Ranges may play out of source order.
+    """
+    keep_ranges = normalize_source_ranges(keep_ranges)
+    if not keep_ranges:
+        return False
+    if output_offsets is not None and len(output_offsets) != len(keep_ranges):
+        logger.error(
+            "Got %d output offsets for %d kept ranges", len(output_offsets), len(keep_ranges)
+        )
+        return False
+
+    audio_stream = select_audio_stream_index(video_path)
+
+    if len(keep_ranges) == 1:
+        start, end = keep_ranges[0]
+        command = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{start:.3f}",
+            "-i",
+            str(video_path),
+            *audio_stream_map_args(audio_stream),
+            *NO_CHAPTERS,
+            "-t",
+            f"{end - start:.3f}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            str(INTERMEDIATE_CRF),
+            "-pix_fmt",
+            "yuv420p",
+            *(["-af", audio_edge_fades(end - start)] if audio_stream is not None else []),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+        return run_ffmpeg_command(command).returncode == 0
+
+    # Smooth a handful of substantial internal cuts with crossfades; fall back to
+    # a hard concat for many tiny fragments (heavy filler edits) or on failure.
+    # Explicit offsets whose junctions are all hard cuts go straight to concat.
+    if output_offsets is not None:
+        wants_crossfade = any(junction_fades_for_offsets(keep_ranges, output_offsets))
+    else:
+        wants_crossfade = crossfade_fade_for_ranges(keep_ranges) > 0
+    if wants_crossfade:
+        if render_ranges_crossfade_ffmpeg(
+            video_path, keep_ranges, output_path, audio_stream, output_offsets=output_offsets
+        ):
+            return True
+        if output_offsets is not None:
+            # Captions, B-roll, the source map and a plan's moment times are
+            # all placed on these offsets; a hard concat would play every later
+            # range late, so the render fails instead.
+            logger.error("Crossfade stitch failed for a clip with explicit output offsets")
+            return False
+        logger.info("Crossfade stitch failed; falling back to hard concat")
+
+    with _range_inputs(video_path, keep_ranges, audio_stream, Path(output_path).parent) as (
+        input_args, sources, concat_audio,
+    ):
+        has_audio = concat_audio is not None
+        filter_parts: List[str] = []
+        concat_inputs: List[str] = []
+        for idx, ((start, end), (source, origin)) in enumerate(zip(keep_ranges, sources)):
+            rel_start, rel_end = start - origin, end - origin
+            filter_parts.append(
+                f"[{source}:v]trim=start={rel_start:.3f}:end={rel_end:.3f},setpts=PTS-STARTPTS[v{idx}]"
+            )
+            concat_inputs.append(f"[v{idx}]")
+            if has_audio:
+                filter_parts.append(
+                    f"[{source}:a:{concat_audio}]atrim=start={rel_start:.3f}:end={rel_end:.3f},asetpts=PTS-STARTPTS[a{idx}]"
+                )
+                concat_inputs.append(f"[a{idx}]")
+
+        if has_audio:
+            filter_parts.append(
+                f"{''.join(concat_inputs)}concat=n={len(keep_ranges)}:v=1:a=1[v][joined]"
+            )
+            total = sum(end - start for start, end in keep_ranges)
+            filter_parts.append(f"[joined]{audio_edge_fades(total)}[a]")
+            map_args = ["-map", "[v]", "-map", "[a]"]
+        else:
+            filter_parts.append(
+                f"{''.join(concat_inputs)}concat=n={len(keep_ranges)}:v=1:a=0[v]"
+            )
+            map_args = ["-map", "[v]"]
+
+        command = [
+            "ffmpeg",
+            "-y",
+            *input_args,
+            "-filter_complex",
+            ";".join(filter_parts),
+            *map_args,
+            *NO_CHAPTERS,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            str(INTERMEDIATE_CRF),
+            "-pix_fmt",
+            "yuv420p",
+        ]
+        if has_audio:
+            command.extend(["-c:a", "aac", "-b:a", "192k"])
+        command.extend(["-movflags", "+faststart", str(output_path)])
+        return run_ffmpeg_command(command, timeout=1800).returncode == 0
+
+
+def burn_ass_subtitles_ffmpeg(
+    input_path: Path,
+    ass_path: Path,
+    output_path: Path,
+    fonts_dir: Optional[Path] = None,
+) -> bool:
+    video_filter = f"{subtitles_filter_fragment(ass_path, fonts_dir)},setsar=1"
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_path),
+        "-vf",
+        video_filter,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    return run_ffmpeg_command(command).returncode == 0

@@ -1,0 +1,1441 @@
+"""
+Task service - orchestrates task creation and processing workflow.
+"""
+
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from subprocess import SubprocessError
+from typing import Dict, Any, Optional, Callable
+import math
+import logging
+from datetime import datetime
+from pathlib import Path
+import asyncio
+import copy
+import json
+import hashlib
+import shutil
+from time import perf_counter
+
+
+from arq.constants import job_key_prefix, in_progress_key_prefix, expires_extra_ms
+from ..analytics import capture_event, elapsed_seconds, source_kind
+from ..broll import BRollSession
+from ..workers.job_queue import JobQueue
+from ..repositories.task_repository import TaskRepository
+from ..repositories.task_idempotency_repository import TaskIdempotencyReplay
+from ..repositories.minute_usage_repository import charged_duration
+from ..repositories.source_repository import SourceRepository
+from ..repositories.clip_repository import ClipRepository
+from ..repositories.cache_repository import CacheRepository
+from ..repositories.task_checkpoint_repository import TaskCheckpointRepository, checkpoint_input_key
+from .video_service import VideoService
+from .clip_service import ClipEditingMixin, fill_output_starts
+from ..repositories.edit_transaction import serialized_task_edit, task_edit_transaction, TaskCancelled
+from ..repositories.task_run_guard import exclusive_task_run, task_run_guard
+from ..repositories.generation_allowance_guard import generation_allowance_guard
+from .billing_service import BillingService, reduced_media_limits
+from .email_previews import (
+    MAX_CLIP_PREVIEWS,
+    ClipPreview,
+    TaskPreviews,
+    clip_preview,
+    source_preview,
+)
+from .task_completion_email_service import (
+    TaskCompletionEmailService,
+    TaskCompletionRecipient,
+)
+from ..config import Config, get_config
+from ..youtube_utils import cleanup_downloaded_files, extract_video_id
+from ..youtube_proxy import YouTubeGeoRestrictedError, is_age_restricted_error
+from ..source_range import SourceRange, media_duration, public_range_fields
+from ..youtube_source import load_time_map, localize_segment, restore_clip_timeline, transcript_source_for
+from ..clip_cleanup import normalize_clip_cleanup_settings
+from ..clip_duration import clip_duration, validate_clip_length
+from ..ai import TRANSCRIPT_ANALYSIS_CACHE_VERSION
+from ..clip_source_map import load_clip_caption_settings, normalize_source_ranges, source_range_bounds
+from ..media.timeline import seconds_to_mmss
+from ..workflows.boundaries import cleanup_key
+from ..onboarding.preview import is_locked_preview, locked_moments, mark_preview_used, pick_preview
+from ..workflows.contracts import OUTLINE_VERSION, WorkflowSpec, workflow_spec_from_task
+from ..workflows.errors import WorkflowError
+from ..media_storage import MediaStorage, media_work
+from ..utils.async_helpers import run_in_thread
+from ..repositories.media_repository import queue_delete, guard_source_creation
+from ..stream_source import cleanup_stream_path, cleanup_stream_task, seed_stream_resolution
+from ..edit_fx.jobs import FxJob, fx_active
+from ..edit_fx.settings import read_edit_style
+
+logger = logging.getLogger(__name__)
+PROCESSING_CACHE_VERSION = "20260319_grounded_segments_v1"
+# What one rendered output is called in progress messages ("Creating part 2/5...").
+OUTPUT_NOUNS = {"series": "part", "recap": "recap", "trailer": "trailer"}
+# Workflows whose outputs only make sense together: a failure leaves no clips.
+ALL_OR_NOTHING_WORKFLOWS = ("series", "recap", "trailer")
+
+
+class _ProcessingPlanCache:
+    """Workflow plans and source outlines, stored as processing_cache analysis rows."""
+
+    def __init__(
+        self,
+        cache_repo: CacheRepository,
+        db: AsyncSession,
+        url: str,
+        source_type: str,
+        session_lock: Optional[asyncio.Lock] = None,
+    ):
+        self.cache_repo = cache_repo
+        self.db = db
+        self.url = url
+        self.source_type = source_type
+        # Planners may run passes concurrently, but the task's session takes
+        # one query at a time; progress updates share this lock.
+        self._lock = session_lock or asyncio.Lock()
+
+    async def load(self, key: str) -> Optional[str]:
+        async with self._lock:
+            row = await self.cache_repo.get_cache(self.db, key)
+        return row.get("analysis_json") if row else None
+
+    async def store(self, key: str, payload: str) -> None:
+        async with self._lock:
+            await self.cache_repo.upsert_cache(
+                self.db,
+                cache_key=key,
+                source_url=self.url,
+                source_type=self.source_type,
+                analysis_json=payload,
+            )
+
+
+def _render_failure_message(spec: WorkflowSpec, segment: Dict[str, Any]) -> str:
+    if spec.workflow == "series":
+        return f"Part {segment.get('part_number')} couldn't be rendered. Please try again."
+    if spec.workflow in ("recap", "trailer"):
+        return f"We couldn't render your {spec.workflow}. Please try again."
+    return "A clip couldn't be rendered. Please try again."
+
+
+def _fill_plan_output_starts(plan: Dict[str, Any], segment: Dict[str, Any], group_output_starts: list) -> bool:
+    """Copy rendered output starts onto the plan's points/beats, matched by their source range."""
+    ranges = [tuple(float(value) for value in item) for item in segment.get("source_ranges") or []]
+    changed = False
+    for key in ("points", "beats"):
+        for item in plan.get(key) or []:
+            item_ranges = item.get("ranges") if isinstance(item, dict) else None
+            if not item_ranges:
+                continue
+            first = (float(item_ranges[0][0]), float(item_ranges[0][1]))
+            index = next(
+                (i for i, (start, end) in enumerate(ranges)
+                 if abs(start - first[0]) < 1e-3 and abs(end - first[1]) < 1e-3),
+                None,
+            )
+            if index is not None and index < len(group_output_starts) and group_output_starts[index] is not None:
+                item["output_start"] = round(float(group_output_starts[index]), 3)
+                changed = True
+    return changed
+
+
+# Failures the pipeline didn't word for a person: paths, SQL, ffmpeg arguments.
+# Deliberate messages are plain Exception or ValueError, or a RuntimeError
+# subclass such as a download error, and pass through.
+_INTERNAL_ERRORS = (
+    OSError, LookupError, TypeError, AttributeError, NameError, AssertionError,
+    ArithmeticError, SubprocessError, SQLAlchemyError,
+)
+KEPT_OUTPUTS_ERROR = "Your finished clips are saved. Retry generation to create the missing ones."
+_GENERIC_ERROR = "Something went wrong while generating your clips. Retry generation to try again."
+
+
+def user_facing_error(error: Exception) -> str:
+    """What the task page shows for ``error``. The real one stays in the logs."""
+    if type(error) is RuntimeError or isinstance(error, _INTERNAL_ERRORS):
+        return _GENERIC_ERROR
+    return str(error) or _GENERIC_ERROR
+
+
+class TaskService(ClipEditingMixin):
+    """Service for task workflow orchestration."""
+
+    def __init__(self, db: AsyncSession, config: Config | None = None):
+        self.db = db
+        self.task_repo = TaskRepository()
+        self.source_repo = SourceRepository()
+        self.clip_repo = ClipRepository()
+        self.cache_repo = CacheRepository()
+        self.checkpoint_repo = TaskCheckpointRepository()
+        self.video_service = VideoService()
+        self.config = config or get_config()
+        self.reused_upload_task = False
+        self.reused_upload_job_id = None
+
+    @staticmethod
+    def _build_cache_key(
+        url: str,
+        source_type: str,
+        processing_mode: str,
+        quality: Optional[str] = None,
+        source_range: Optional[SourceRange] = None,
+    ) -> str:
+        payload = (
+            f"{source_type}|{processing_mode}|"
+            f"{TRANSCRIPT_ANALYSIS_CACHE_VERSION}|{url.strip()}"
+        )
+        # Reduced-quality YouTube downloads get their own entry so a 1080p
+        # request never reuses a 720p source. Full quality keeps the old key.
+        if quality and source_type == "youtube":
+            payload += f"|q{quality}"
+        # A picked part has its own transcript; the whole video's key is unchanged.
+        if source_range is not None:
+            payload += source_range.cache_suffix()
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _build_analysis_cache_key(cache_key: str, clip_length: str = "auto") -> str:
+        """Row holding the analysis for a preset. Auto keeps the source row.
+
+        The source and transcript do not depend on the preset, so other presets
+        store only their analysis under a derived key and share the rest.
+        """
+        if validate_clip_length(clip_length) == "auto":
+            return cache_key
+        payload = f"{cache_key}|length:{clip_length}"
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _build_workflow_cache_key(
+        cache_key: str,
+        spec: WorkflowSpec,
+        config: Config,
+        cleanup_settings: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Row holding a workflow's plan (or highlights steered by instructions).
+
+        Planned workflows budget their cuts in speech after cleanup, so a plan
+        made with pauses cut is not reused for a task that keeps them (its
+        parts would run past their render cap). Highlights never depend on it.
+        A topic plan holds at most WORKFLOW_TOPIC_MAX_CLIPS clips, so it is
+        only reused under the same cap.
+        """
+        payload = f"{cache_key}|wf:{spec.fingerprint()}|llm:{config.llm}|{config.rerank_llm}"
+        if spec.workflow == "topic":
+            payload += f"|cap:{int(config.workflow_topic_max_clips)}"
+        if spec.workflow != "highlights":
+            lengths = cleanup_key(normalize_clip_cleanup_settings(**(cleanup_settings or {})))
+            if lengths is not None:
+                payload += f"|cleanup:{json.dumps(lengths)}"
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _build_outline_cache_key(cache_key: str, config: Config) -> str:
+        """Row holding the source outline, shared by every workflow and user."""
+        payload = f"{cache_key}|{OUTLINE_VERSION}|{config.llm}|{config.rerank_llm}"
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    async def _media_limits(
+        self, user_id: Optional[str], *, team_id: Optional[str] = None
+    ) -> tuple[Optional[str], Optional[int]]:
+        """(download quality, clip cap) for the workspace's plan; see reduced_media_limits."""
+        if not user_id and not team_id:
+            return None, None
+        summary = (
+            await BillingService(self.db, self.config).get_usage_summary(
+                user_id or "", team_id=team_id
+            )
+            if team_id
+            else await BillingService(self.db, self.config).get_usage_summary(user_id or "")
+        )
+        return reduced_media_limits(summary)
+
+    def _is_stale_queued_task(self, task: Dict[str, Any]) -> bool:
+        """Detect queued tasks that have likely stalled due to worker issues."""
+        if task.get("status") != "queued":
+            return False
+
+        return self._task_age_seconds(task) >= self.config.queued_task_timeout_seconds
+
+    async def _queued_job_is_missing(self, task: Dict[str, Any]) -> bool:
+        """Confirm this reservation has no queued/running ARQ job, not worker health.
+
+        A heartbeat gap cannot invalidate a healthy backlog. Redis outages leave
+        reservations intact until job existence can be checked again.
+        """
+        metadata = await self.task_repo.load_source_metadata(self.db, task["id"])
+        job_id = metadata.get("processing_job_id")
+        if not job_id:
+            # Old tasks predate tracked job IDs. Give their jobs the full ARQ
+            # retention window instead of dropping them during a worker restart.
+            return self._task_age_seconds(task) >= max(
+                self.config.queued_task_timeout_seconds, expires_extra_ms / 1000
+            )
+        try:
+            pool = await JobQueue.get_pool()
+            return not bool(await pool.exists(
+                job_key_prefix + job_id, in_progress_key_prefix + job_id
+            ))
+        except Exception:
+            logger.exception("Could not verify queued job for task %s", task["id"])
+            return False
+
+    def _is_stale_processing_task(self, task: Dict[str, Any]) -> bool:
+        """Detect processing tasks whose worker likely died mid-run.
+
+        Recovers tasks stuck in "processing" (e.g. arq hard-killed the job past
+        its timeout) so they don't stay "processing" forever. The configured
+        timeout defaults well above arq's job_timeout, so a legitimately
+        long-running job is never falsely swept into "error".
+        """
+        if task.get("status") != "processing":
+            return False
+
+        return (
+            self._task_age_seconds(task)
+            >= self.config.processing_task_timeout_seconds
+        )
+
+    @staticmethod
+    def _task_age_seconds(task: Dict[str, Any]) -> float:
+        """Seconds since the task's last update (or creation)."""
+        created_at = task.get("created_at")
+        updated_at = task.get("updated_at") or created_at
+
+        if not created_at or not updated_at:
+            return 0.0
+
+        now = (
+            datetime.now(updated_at.tzinfo)
+            if getattr(updated_at, "tzinfo", None)
+            else datetime.utcnow()
+        )
+        return (now - updated_at).total_seconds()
+
+    @staticmethod
+    def _cleanup_source_video(
+        video_path: Optional[Path], source_type: str, url: str, range_dir: Optional[str] = None,
+    ) -> None:
+        """Delete the downloaded source video + audio sidecar after a task.
+
+        Generated clips and the tiny transcript-cache JSON are left in place.
+        For YouTube sources, ``cleanup_downloaded_files`` removes downloaded
+        media and partials but retains word timings. For uploads we remove the audio sidecar
+        generated for transcription — the original upload is owned elsewhere.
+        """
+        if range_dir:
+            # The picked part's audio and links; its timings never become the video's.
+            shutil.rmtree(range_dir, ignore_errors=True)
+        if not video_path:
+            return
+
+        if source_type == "youtube":
+            try:
+                video_id = extract_video_id(url)
+                if video_id:
+                    try:
+                        if not range_dir:
+                            MediaStorage().save_youtube_metadata(
+                                video_id, transcript_source_for(video_id, video_path)
+                            )
+                    except Exception:
+                        logger.exception("Could not back up YouTube word timings")
+                    cleanup_downloaded_files(video_id, source_path=video_path)
+                    logger.info("Cleaned up YouTube source artifacts for %s", video_id)
+                    return
+            except Exception as e:
+                logger.warning("Failed YouTube source cleanup: %s", e)
+
+        if source_type in {"twitch", "kick"}:
+            try:
+                # Removes only the operation (processing job or one editor
+                # render) that produced this file, never a concurrent edit's.
+                if cleanup_stream_path(video_path):
+                    logger.info("Cleaned up stream source artifacts")
+                    return
+            except Exception as e:
+                logger.warning("Failed stream source cleanup: %s", e)
+
+        # Fallback / upload path: at least drop the transcription audio sidecar
+        # (e.g. "<stem>.transcription.mp3") next to the source file.
+        try:
+            MediaStorage().save_source_metadata(video_path)
+            sidecar = video_path.with_name(f"{video_path.stem}.transcription.mp3")
+            if sidecar.exists():
+                sidecar.unlink()
+                logger.info("Removed transcription audio sidecar: %s", sidecar.name)
+        except Exception as e:
+            logger.warning("Failed to remove transcription sidecar: %s", e)
+
+    @guard_source_creation
+    async def create_task_with_source(
+        self,
+        user_id: str,
+        url: str,
+        title: Optional[str] = None,
+        font_family: Optional[str] = None,
+        font_size: Optional[int] = None,
+        font_color: Optional[str] = None,
+        caption_template: str = "default",
+        include_broll: bool = False,
+        processing_mode: str = "fast",
+        source_duration_seconds: Optional[int] = None,
+        upload_request_key: Optional[str] = None,
+        workflow: str = "highlights",
+        workflow_options: Optional[Dict[str, Any]] = None,
+        edit_style: Optional[Dict[str, Any]] = None,
+        idempotency: Optional[tuple[str, str]] = None,
+        team_id: Optional[str] = None,
+        preview: bool = False,
+    ) -> str:
+        """
+        Create a new task with associated source.
+
+        ``preview``: a free preview project (onboarding/preview.py). It is never charged.
+        Returns the task ID.
+
+        With ``idempotency`` (key, request hash), raises ``TaskIdempotencyReplay``
+        when a concurrent request with the same key created its task first.
+        """
+        self.reused_upload_task = False
+        self.reused_upload_job_id = None
+        # Validate user exists
+        if not await self.task_repo.user_exists(self.db, user_id):
+            raise ValueError(f"User {user_id} not found")
+
+        if upload_request_key and url.startswith("upload://"):
+            existing = await self.task_repo.find_recent_upload_task(
+                self.db, user_id, upload_request_key, team_id=team_id,
+            )
+            if existing is not None:
+                self.reused_upload_task = True
+                self.reused_upload_job_id = existing.job_id or existing.id
+                return str(existing.id)
+
+        # Determine source type
+        source_type = self.video_service.determine_source_type(url)
+        if url.startswith("upload://s3/"):
+            await run_in_thread(MediaStorage().validate_source, url, user_id)
+
+        # Routes preflight new sources. Other callers must also persist a verified
+        # duration, rather than creating an unmetered task with a NULL default.
+        try:
+            source_duration_seconds = charged_duration(source_duration_seconds)
+        except ValueError:
+            source_duration_seconds = await self.video_service.measure_source_duration(url, user_id)
+
+        # Get or generate title
+        if not title:
+            if source_type == "youtube":
+                title = await self.video_service.get_video_title(url)
+            else:
+                title = "Uploaded Video"
+
+        # Create source
+        source_id = await self.source_repo.create_source(
+            self.db, source_type=source_type, title=title, url=url
+        )
+
+        # Create task
+        try:
+            task_id = await self.task_repo.create_task(
+                self.db,
+                user_id=user_id,
+                source_id=source_id,
+                status="queued",  # Changed from "processing" to "queued"
+                font_family=font_family,
+                font_size=font_size,
+                font_color=font_color,
+                caption_template=caption_template,
+                include_broll=include_broll,
+                processing_mode=processing_mode,
+                source_duration_seconds=source_duration_seconds,
+                charge_minutes=self.config.monetization_enabled and not preview,
+                workflow=workflow,
+                workflow_options=workflow_options,
+                **({"edit_style": edit_style} if edit_style else {}),
+                **({"idempotency": idempotency} if idempotency else {}),
+                **({"team_id": team_id} if team_id else {}),
+                **({"preview": {"status": "pending"}} if preview else {}),
+            )
+        except TaskIdempotencyReplay:
+            # The task insert rolled back. Drop the source made for it.
+            await self.source_repo.delete_unused_source(self.db, source_id)
+            raise
+
+        if upload_request_key and url.startswith("upload://"):
+            metadata: Dict[str, Any] = {"upload_request_key": upload_request_key}
+            from ..repositories.upload_repository import get_stored_upload
+
+            stored = await get_stored_upload(self.db, url)
+            if stored is not None and stored.storage_reference:
+                metadata["storage_reference"] = stored.storage_reference
+            await self.task_repo.save_source_metadata(self.db, task_id, metadata)
+
+        logger.info(f"Created task {task_id} for user {user_id}")
+        return task_id
+
+    async def _load_performance_context(
+        self, user_id: Optional[str], *, team_id: Optional[str] = None
+    ) -> Optional[str]:
+        """Build the workspace's performance summary for the AI prompt (best effort).
+
+        A team task learns from the team's posts, never from the personal
+        accounts of the member who started it.
+        """
+        if not user_id:
+            return None
+        try:
+            from ..database import AsyncSessionLocal
+            from .social_service import SocialService
+
+            # A short-lived session of its own: a failed lookup (e.g. social
+            # tables not migrated yet when the worker deploys first) must not
+            # leave the task's transaction aborted.
+            async with AsyncSessionLocal() as session:
+                return await SocialService(session, self.config).build_performance_context(
+                    user_id, **({"team_id": team_id} if team_id else {})
+                )
+        except Exception as exc:  # never block processing
+            logger.warning("Skipping performance context for user %s: %s", user_id, exc)
+            return None
+
+    def _processing_transaction(self, task_id: str):
+        return task_edit_transaction(self.db, task_id, processing=True)
+
+    def _task_run_guard(self, task_id: str):
+        return task_run_guard(self.db, task_id)
+
+    async def _seed_stream_source(self, task_id: str) -> None:
+        """Reuse the preflight's length and any cheap actor result in the worker."""
+        try:
+            task = await self.task_repo.get_task_by_id(self.db, task_id) or {}
+            metadata = await self.task_repo.load_source_metadata(self.db, task_id) or {}
+            await run_in_thread(
+                seed_stream_resolution,
+                task_id,
+                metadata.get("stream_resolution"),
+                # For a picked part the charged length is the part; seed the VOD's.
+                media_duration(task, metadata),
+            )
+        except Exception as exc:  # the worker can still resolve everything itself
+            logger.warning("Could not seed stream source details: %s", exc)
+
+    @exclusive_task_run
+    @media_work
+    async def process_task(
+        self,
+        task_id: str,
+        url: str,
+        source_type: str,
+        user_id: Optional[str] = None,
+        font_family: Optional[str] = None,
+        font_size: Optional[int] = None,
+        font_color: Optional[str] = None,
+        caption_template: str = "default",
+        processing_mode: str = "fast",
+        output_format: str = "vertical",
+        add_subtitles: bool = True,
+        progress_callback: Optional[Callable] = None,
+        should_cancel: Optional[Callable] = None,
+        clip_ready_callback: Optional[Callable] = None,
+        cleanup_settings: Optional[Dict[str, Any]] = None,
+        clip_length: str = "auto",
+    ) -> Dict[str, Any]:
+        """
+        Process a task: download video, analyze, create clips.
+        Returns processing results.
+        """
+        # Tracked so the downloaded source video can be cleaned up on both the
+        # success and error paths; multi-GB YouTube downloads otherwise pile up
+        # in temp/ until the disk fills and later tasks fail.
+        video_path: Optional[Path] = None
+        range_dir: Optional[str] = None
+        pending_clip_path: Optional[Path] = None
+        clips_output_dir = Path(self.config.temp_dir) / "clips"
+        spec: Optional[WorkflowSpec] = None
+        # Finished output from an earlier attempt, which may carry edits, exports
+        # and scheduled posts. Unknown until read, so a failure before that deletes nothing.
+        prior_outputs = True
+        # For the task_completed / task_failed product events.
+        started_at: Optional[datetime] = None
+        cache_hit: Optional[bool] = None
+
+        async def check_cancelled():
+            if should_cancel and await should_cancel():
+                raise TaskCancelled()
+
+        try:
+            await check_cancelled()
+            logger.info(f"Starting processing for task {task_id}")
+            # What to make is read from the task, so queued jobs and resumes
+            # honour it with the ARQ job arguments unchanged.
+            task_row = await self.task_repo.get_task_by_id(self.db, task_id) or {}
+            task_team_id = task_row.get("team_id")
+            spec = workflow_spec_from_task(task_row, clip_length)
+            prior_outputs = bool(await self.clip_repo.get_clips_by_task(self.db, task_id))
+            # New tasks already have an atomic acceptance charge. Recover queued
+            # legacy jobs with missing durations before doing paid processing.
+            # A free preview is never charged (onboarding/preview.py); unlocking it charges first.
+            if self.config.monetization_enabled and user_id and not is_locked_preview(task_row):
+                async with generation_allowance_guard(
+                    self.db,
+                    user_id,
+                    enabled=True,
+                    **({"team_id": task_team_id} if task_team_id else {}),
+                ):
+                    await BillingService(self.db, self.config).assert_can_resume_task(
+                        user_id,
+                        task_id,
+                        require_active_plan=False,
+                        **({"team_id": task_team_id} if task_team_id else {}),
+                    )
+            started_at = datetime.utcnow()
+            stage_timings: Dict[str, float] = {}
+            billing = (
+                await BillingService(self.db, self.config).get_usage_summary(
+                    user_id,
+                    **({"team_id": task_team_id} if task_team_id else {}),
+                )
+                if user_id
+                else {}
+            )
+            # Reduced-resolution plans download at their output quality and get
+            # a final downscale; 1080p plans keep the renderer's output.
+            download_quality, output_short_side = reduced_media_limits(billing)
+            source_range = SourceRange.from_metadata(
+                await self.task_repo.load_source_metadata(self.db, task_id)
+            )
+            cache_key = self._build_cache_key(
+                url, source_type, processing_mode, download_quality, source_range
+            )
+            if spec.legacy:
+                analysis_cache_key = self._build_analysis_cache_key(cache_key, clip_length)
+            else:
+                analysis_cache_key = self._build_workflow_cache_key(
+                    cache_key, spec, self.config, cleanup_settings
+                )
+            outline_cache_key = self._build_outline_cache_key(cache_key, self.config)
+
+            cache_entry = await self.cache_repo.get_cache(self.db, cache_key)
+            cached_transcript = (
+                cache_entry.get("transcript_text") if cache_entry else None
+            )
+            analysis_entry = (
+                cache_entry
+                if analysis_cache_key == cache_key
+                else await self.cache_repo.get_cache(self.db, analysis_cache_key)
+            )
+            cached_analysis_json = (
+                analysis_entry.get("analysis_json") if analysis_entry else None
+            )
+            # Performance loop: feed this creator's real audience data back into
+            # clip selection. Personalized analyses bypass the shared analysis
+            # cache so one creator's history never shapes another's clips.
+            # Series, recaps and trailers follow the video, not past metrics.
+            performance_context = (
+                await self._load_performance_context(
+                    user_id, **({"team_id": task_team_id} if task_team_id else {})
+                )
+                if spec.uses_performance_context
+                else None
+            )
+            # A picked part's stored analysis holds segments already moved onto
+            # the source's timeline, so it is never read back or shared.
+            skip_analysis_cache = bool(performance_context) or source_range is not None
+            if skip_analysis_cache:
+                cached_analysis_json = None
+            input_key = checkpoint_input_key(url, source_type, processing_mode, clip_length, self.config)
+            if source_range is not None:
+                input_key = hashlib.sha256(
+                    f"{input_key}{source_range.cache_suffix()}".encode("utf-8")
+                ).hexdigest()
+            checkpoint = await self.checkpoint_repo.get(self.db, task_id, input_key)
+            cache_hit = bool(
+                (checkpoint.get("transcript") or cached_transcript)
+                and (checkpoint.get("analysis") or checkpoint.get("workflow_final") or cached_analysis_json)
+            )
+
+            async def save_checkpoint(patch: Dict[str, Any]) -> None:
+                await self.checkpoint_repo.save(self.db, task_id, input_key, patch)
+                checkpoint.update(patch)
+
+            await self.task_repo.update_task_runtime_metadata(
+                self.db,
+                task_id,
+                started_at=started_at,
+                cache_hit=cache_hit,
+            )
+
+            # Update status to processing
+            started = await self.task_repo.update_task_status(
+                self.db, task_id, "processing", progress=0,
+                progress_message="Starting...",
+                expected_statuses=["queued", "processing"],
+            )
+            if started is False:
+                raise TaskCancelled()
+            stale_plan = task_row.get("workflow_plan")
+            if not spec.legacy and isinstance(stale_plan, dict) and "error" in stale_plan:
+                # A retry starts clean: the last attempt's failure (and its
+                # suggestions) no longer describes this run.
+                await self.task_repo.save_workflow_plan(
+                    self.db, task_id, {key: value for key, value in stale_plan.items() if key != "error"}
+                )
+
+            # Progress callback wrapper
+            # One query at a time on the task's session, even when a workflow
+            # planner reports progress or reads its cache from concurrent passes.
+            session_lock = asyncio.Lock()
+
+            async def update_progress(
+                progress: int, message: str, status: str = "processing"
+            ):
+                await check_cancelled()
+                async with session_lock:
+                    changed = await self.task_repo.update_task_status(
+                        self.db, task_id, status, progress=progress,
+                        progress_message=message, expected_statuses=["processing"],
+                    )
+                if changed is False:
+                    raise TaskCancelled()
+                if progress_callback:
+                    await progress_callback(progress, message, status)
+
+            # Process video with progress updates
+            # The plan's per-video cap applies to every source, uploads included
+            # (hosted mode only; self-hosted installs have no video length limit).
+            max_video_duration: Optional[int] = None
+            if self.config.monetization_enabled:
+                max_video_duration = self.config.max_video_duration
+                if user_id:
+                    max_video_duration = self.config.max_youtube_video_duration_for_plan(
+                        billing.get("plan"),
+                        billing.get("subscription_status"),
+                        billing.get("subscription_provider"),
+                    )
+
+            if source_type in {"twitch", "kick"}:
+                await self._seed_stream_source(task_id)
+
+            normalized_cleanup_settings = normalize_clip_cleanup_settings(
+                **(cleanup_settings or {})
+            )
+            workflow_kwargs: Dict[str, Any] = {}
+            if not spec.legacy:
+                workflow_kwargs = {
+                    "workflow_spec": spec,
+                    "plan_cache": _ProcessingPlanCache(
+                        self.cache_repo, self.db, url, source_type, session_lock
+                    ),
+                    "outline_cache_key": outline_cache_key,
+                    "cleanup_settings": normalized_cleanup_settings,
+                }
+
+            pipeline_start = perf_counter()
+            result = await self.video_service.process_video_complete(
+                url=url,
+                source_type=source_type,
+                task_id=task_id,
+                font_family=font_family,
+                font_size=font_size,
+                font_color=font_color,
+                caption_template=caption_template,
+                processing_mode=processing_mode,
+                output_format=output_format,
+                add_subtitles=add_subtitles,
+                max_video_duration=max_video_duration,
+                download_quality=download_quality,
+                cached_transcript=cached_transcript,
+                cached_analysis_json=cached_analysis_json,
+                progress_callback=update_progress,
+                should_cancel=should_cancel,
+                performance_context=performance_context,
+                clip_length=clip_length,
+                checkpoint=checkpoint,
+                checkpoint_callback=save_checkpoint,
+                **workflow_kwargs,
+                **({"source_range": source_range} if source_range is not None else {}),
+            )
+            range_dir = result.get("source_range_dir")
+            stage_timings["pipeline_seconds"] = round(
+                perf_counter() - pipeline_start, 3
+            )
+            video_path = Path(result["video_path"])
+            workflow_plan = result.get("workflow_plan")
+            if workflow_plan is not None and not result.get("workflow_plan_restored"):
+                # Saved before any clip is rendered: the clips are a pure
+                # function of this plan, and a failed render still shows it.
+                async with self._processing_transaction(task_id):
+                    await check_cancelled()
+                    await self.task_repo.save_workflow_plan(self.db, task_id, workflow_plan)
+
+            # Render clips incrementally: render, save, notify one at a time
+            segments_to_render = result.get("segments_to_render", [])
+            # A free preview renders only its best clip; the others are listed, locked.
+            preview_index: Optional[int] = None
+            if is_locked_preview(task_row) and segments_to_render:
+                preview_index = pick_preview(segments_to_render)
+                async with self._processing_transaction(task_id):
+                    await self.task_repo.merge_preview(self.db, task_id, {
+                        "found": len(segments_to_render),
+                        "rendered_position": preview_index + 1,
+                        "locked": locked_moments(segments_to_render, preview_index),
+                    })
+            if not segments_to_render:
+                await self.cache_repo.upsert_cache(
+                    self.db,
+                    cache_key=cache_key,
+                    source_url=url,
+                    source_type=source_type,
+                    video_path=MediaStorage().source_reference(url) if url.startswith("upload://s3/") else result.get("video_path"),
+                    transcript_text=result.get("transcript"),
+                    analysis_json=None,
+                )
+                raise ValueError(
+                    "No usable clip segments were selected for this video."
+                )
+
+            await self.cache_repo.upsert_cache(
+                self.db,
+                cache_key=cache_key,
+                source_url=url,
+                source_type=source_type,
+                video_path=MediaStorage().source_reference(url) if url.startswith("upload://s3/") else result.get("video_path"),
+                transcript_text=result.get("transcript"),
+                analysis_json=(
+                    result.get("analysis_json")
+                    if not skip_analysis_cache and analysis_cache_key == cache_key
+                    else None
+                ),
+            )
+            if not skip_analysis_cache and analysis_cache_key != cache_key:
+                await self.cache_repo.upsert_cache(
+                    self.db,
+                    cache_key=analysis_cache_key,
+                    source_url=url,
+                    source_type=source_type,
+                    analysis_json=result.get("analysis_json"),
+                )
+
+            video_path = Path(result["video_path"])
+            time_map = await run_in_thread(load_time_map, video_path)
+            total_clips = 1 if preview_index is not None else len(segments_to_render)
+            clips_output_dir = Path(self.config.temp_dir) / "clips"
+            clips_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Completed positions survive retries, including edits, exports and
+            # scheduled posts attached to their IDs. Never delete usable output
+            # before a later render has even succeeded.
+            async with self._processing_transaction(task_id):
+                await check_cancelled()
+                existing_clips = await self.clip_repo.get_clips_by_task(self.db, task_id)
+                if (
+                    existing_clips
+                    and spec.workflow in ALL_OR_NOTHING_WORKFLOWS
+                    and not result.get("workflow_plan_restored")
+                ):
+                    # A new plan: these parts were cut for one that no longer
+                    # exists, and part 3 of one can't follow part 2 of the other.
+                    await self.clip_repo.delete_clips_by_task(self.db, task_id)
+                    await self.checkpoint_repo.forget_completed_positions(self.db, task_id)
+                    checkpoint.pop("completed_positions", None)
+                    existing_clips = []
+                    prior_outputs = False
+                clip_ids_by_order = {clip["clip_order"]: clip["id"] for clip in existing_clips}
+                # Display order changes when a user splits, merges or reorders
+                # clips. Track completed plan positions separately and commit
+                # them atomically with each newly created clip.
+                completed_positions = set(checkpoint.get("completed_positions", clip_ids_by_order))
+                await save_checkpoint({"completed_positions": sorted(completed_positions)})
+                await self.task_repo.update_task_clips(
+                    self.db, task_id, [clip_ids_by_order[order] for order in sorted(clip_ids_by_order)]
+                )
+
+            failed_positions = []
+            render_start = perf_counter()
+            # Read from the task so queued jobs and resumes honour the setting.
+            include_broll = bool(task_row.get("include_broll"))
+            # Dynamic edits: read from the row (create stores it; resumes and retries keep it).
+            edit_style = read_edit_style(task_row.get("edit_style"))
+            fx_on = fx_active(edit_style, caption_template)
+            if fx_on and user_id:
+                from ..observability import set_user_id
+
+                set_user_id(user_id)
+
+            async def _merge_beats(position: int, beats: Dict[str, Any]) -> None:
+                # Re-read so one clip's beats never replace another's (the checkpoint patch is a top-level replace).
+                merged = dict(checkpoint.get("edit_beats") or {})
+                merged[str(position)] = beats
+                await save_checkpoint({"edit_beats": merged})
+            broll_session = BRollSession()
+            wants_previews: Optional[bool] = None  # checked once a clip renders
+            # (virality, render order, still) for each saved clip.
+            clip_previews: list[tuple[int, int, ClipPreview]] = []
+            noun = OUTPUT_NOUNS.get(spec.workflow, "clip")
+            rendered_meta: list[tuple[Dict[str, Any], list]] = []
+
+            for i, segment in enumerate(segments_to_render):
+                # Check cancellation
+                await check_cancelled()
+                if i + 1 in completed_positions:
+                    continue
+                if preview_index is not None and i != preview_index:
+                    continue
+
+                # Update progress: 70-95% spread across clips
+                shown_index = 1 if preview_index is not None else i + 1
+                clip_progress = 70 + int(
+                    (shown_index / total_clips) * 25
+                ) if total_clips > 0 else 95
+                await update_progress(
+                    clip_progress,
+                    f"Creating {noun} {shown_index}/{total_clips}...",
+                )
+
+                # A partial download is a concatenated timeline. Render against
+                # local timestamps, then store the clip against the source.
+                render_segment = localize_segment(segment, time_map) if time_map else segment
+                # A planned output carries its own cap (a 90s recap is not cut at 60s).
+                max_clip_seconds = (
+                    float(segment["max_seconds"])
+                    if segment.get("max_seconds")
+                    else clip_duration(clip_length).maximum
+                )
+
+                async def render_clip():
+                    # Built per attempt: a retry reads the beats the first attempt checkpointed (no second model call).
+                    job = (
+                        FxJob(
+                            style=edit_style,
+                            task_id=task_id,
+                            clip_index=i,
+                            cached_beats=(checkpoint.get("edit_beats") or {}).get(str(i)),
+                            on_beats=_merge_beats,
+                        )
+                        if fx_on
+                        else None
+                    )
+                    return await self.video_service.create_single_clip(
+                        video_path,
+                        render_segment,
+                        i,
+                        clips_output_dir,
+                        font_family,
+                        font_size,
+                        font_color,
+                        caption_template,
+                        output_format,
+                        add_subtitles,
+                        normalized_cleanup_settings,
+                        max_short_side=output_short_side,
+                        max_clip_seconds=max_clip_seconds,
+                        include_broll=include_broll,
+                        broll_session=broll_session,
+                        **({"fx": job} if job else {}),
+                    )
+
+                clip_info = await render_clip()
+                if clip_info is None and segment.get("required"):
+                    # A series without part 3 is not a series: try once more, then fail loudly.
+                    await check_cancelled()
+                    logger.warning("Required %s %d failed to render; retrying once", noun, i + 1)
+                    clip_info = await render_clip()
+                    if clip_info is None:
+                        raise WorkflowError(
+                            "render_incomplete", _render_failure_message(spec, segment)
+                        )
+                pending_clip_path = Path(clip_info["path"]) if clip_info else None
+                await check_cancelled()
+                if clip_info is None:
+                    failed_positions.append(i + 1)
+                    continue
+                # Take the email still now: once saved, the clip may move to S3/R2.
+                if wants_previews is None:
+                    wants_previews = await self._completion_email_wanted(task_id)
+                preview = (
+                    await run_in_thread(
+                        clip_preview, Path(clip_info["path"]), clip_info.get("hook_title")
+                    )
+                    if wants_previews
+                    else None
+                )
+                if time_map:
+                    clip_info = await run_in_thread(
+                        restore_clip_timeline, clip_info, time_map, segment
+                    )
+                workflow_fields: Dict[str, Any] = {}
+                if segment.get("hook_type") == "fallback":
+                    # The segment spans the stretch the render looked in; the labels show what the clip plays.
+                    played = source_range_bounds(normalize_source_ranges(clip_info.get("keep_ranges")))
+                    if played:
+                        clip_info["start_time"] = seconds_to_mmss(math.floor(played[0]))
+                        clip_info["end_time"] = seconds_to_mmss(math.floor(played[1]))
+                if segment.get("planned"):
+                    # Labels show the source span the clip plays, on the original timeline.
+                    bounds = source_range_bounds(normalize_source_ranges(segment.get("source_ranges")))
+                    if bounds:
+                        clip_info["start_time"] = seconds_to_mmss(bounds[0])
+                        clip_info["end_time"] = seconds_to_mmss(bounds[1])
+                    meta = copy.deepcopy(segment.get("workflow_meta") or {})
+                    group_output_starts = clip_info.get("group_output_starts") or []
+                    fill_output_starts(meta.get("points"), group_output_starts)
+                    fill_output_starts(meta.get("beats"), group_output_starts)
+                    rendered_meta.append((segment, group_output_starts))
+                    workflow_fields = {
+                        "workflow_role": segment.get("workflow_role"),
+                        "part_number": segment.get("part_number"),
+                        "workflow_meta": meta or None,
+                    }
+
+                async with self._processing_transaction(task_id):
+                    await check_cancelled()
+                    clip_order = max(clip_ids_by_order, default=0) + 1
+                    # Save to DB immediately
+                    clip_id = await self.clip_repo.create_clip(
+                        self.db,
+                        task_id=task_id,
+                        filename=clip_info["filename"],
+                        file_path=clip_info["path"],
+                        start_time=clip_info["start_time"],
+                        end_time=clip_info["end_time"],
+                        duration=clip_info["duration"],
+                        text=clip_info.get("text", ""),
+                        relevance_score=clip_info.get("relevance_score", 0.0),
+                        reasoning=clip_info.get("reasoning", ""),
+                        clip_order=clip_order,
+                        virality_score=clip_info.get("virality_score", 0),
+                        hook_score=clip_info.get("hook_score", 0),
+                        engagement_score=clip_info.get("engagement_score", 0),
+                        value_score=clip_info.get("value_score", 0),
+                        shareability_score=clip_info.get("shareability_score", 0),
+                        hook_type=clip_info.get("hook_type"),
+                        hook_title=clip_info.get("hook_title"),
+                        **workflow_fields,
+                        **({"fx_meta": clip_info["fx_meta"]} if clip_info.get("fx_meta") else {}),
+                    )
+
+                    # Update task's clip IDs array
+                    next_clip_ids = {**clip_ids_by_order, clip_order: clip_id}
+                    await self.task_repo.update_task_clips(
+                        self.db, task_id, [next_clip_ids[order] for order in sorted(next_clip_ids)]
+                    )
+                    await save_checkpoint({"completed_positions": sorted(completed_positions | {i + 1})})
+                    if preview_index is not None and user_id:
+                        # The free preview is used up by the clip it gives, in the same commit: a preview
+                        # cancelled or failing after this keeps its clip, and mustn't leave another free one.
+                        await mark_preview_used(self.db, user_id)
+
+                    await check_cancelled()
+                pending_clip_path = None
+                clip_ids_by_order[clip_order] = clip_id
+                completed_positions.add(i + 1)
+                if preview:
+                    clip_previews.append((clip_info.get("virality_score") or 0, i, preview))
+
+                # Notify frontend via SSE
+                if clip_ready_callback:
+                    clip_record = await self.clip_repo.get_clip_by_id(
+                        self.db, clip_id
+                    )
+                    if clip_record:
+                        await clip_ready_callback(shown_index - 1, total_clips, clip_record)
+
+            stage_timings["render_seconds"] = round(
+                perf_counter() - render_start, 3
+            )
+
+            clip_ids = [clip_ids_by_order[order] for order in sorted(clip_ids_by_order)]
+            if not clip_ids:
+                raise ValueError("No clips could be rendered. Please try again.")
+            if failed_positions:
+                raise ValueError(
+                    f"Could not render {len(failed_positions)} clips. Your completed clips are saved. "
+                    "Retry generation to create the missing clips."
+                )
+
+            if workflow_plan is not None and any([
+                _fill_plan_output_starts(workflow_plan, segment, starts)
+                for segment, starts in rendered_meta
+            ]):
+                # Recap points and trailer beats now know where they play.
+                async with self._processing_transaction(task_id):
+                    await check_cancelled()
+                    await self.task_repo.save_workflow_plan(self.db, task_id, workflow_plan)
+
+            # A cancellation committed after the final render must win over completion.
+            await check_cancelled()
+            completed = await self.task_repo.update_task_status(
+                self.db,
+                task_id,
+                "completed",
+                progress=100,
+                progress_message="Complete!",
+                expected_statuses=["processing"],
+            )
+            if completed is False:
+                raise TaskCancelled()
+
+            if progress_callback:
+                await progress_callback(100, "Complete!", "completed")
+
+            await self.task_repo.update_task_runtime_metadata(
+                self.db,
+                task_id,
+                completed_at=datetime.utcnow(),
+                stage_timings_json=json.dumps(stage_timings),
+                error_code="",
+            )
+            await self._send_completion_notification_if_needed(
+                task_id=task_id,
+                clips_count=len(clip_ids),
+                source_path=video_path,
+                source_type=source_type,
+                url=url,
+                clip_previews=tuple(
+                    preview
+                    for _, _, preview in sorted(clip_previews, key=lambda item: (-item[0], item[1]))
+                )[:MAX_CLIP_PREVIEWS],
+                workflow=spec.workflow,
+                topic=spec.options.topic,
+            )
+
+            capture_event(
+                "task_completed",
+                user_id,
+                {
+                    "task_id": task_id,
+                    "workflow": spec.workflow,
+                    "has_instructions": bool(spec.options.instructions),
+                    "source_kind": source_kind(source_type, url),
+                    "clip_count": len(clip_ids),
+                    "processing_seconds": elapsed_seconds(started_at),
+                    "cache_hit": cache_hit,
+                },
+            )
+
+            logger.info(
+                f"Task {task_id} completed successfully with {len(clip_ids)} clips"
+            )
+
+            return {
+                "task_id": task_id,
+                "clips_count": len(clip_ids),
+                "segments": result["segments"],
+                "summary": result.get("summary"),
+                "key_topics": result.get("key_topics"),
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing task {task_id}: {e}")
+            # Clear failed writes before recording the terminal error state.
+            await self.db.rollback()
+            if pending_clip_path and pending_clip_path != video_path:
+                try:
+                    if pending_clip_path.resolve().is_relative_to(clips_output_dir.resolve()):
+                        pending_clip_path.unlink(missing_ok=True)
+                        pending_clip_path.with_suffix(".source_map.json").unlink(missing_ok=True)
+                except OSError:
+                    logger.warning("Could not remove unfinished clip %s", pending_clip_path)
+            if str(e) == "Task cancelled":
+                await self.task_repo.update_task_status(
+                    self.db,
+                    task_id,
+                    "cancelled",
+                    progress=0,
+                    progress_message="Cancelled by user",
+                    expected_statuses=["queued", "processing"],
+                )
+                raise
+            is_workflow_error = isinstance(e, WorkflowError)
+            all_or_nothing = spec is not None and spec.workflow in ALL_OR_NOTHING_WORKFLOWS
+            if (is_workflow_error or all_or_nothing) and not prior_outputs:
+                # No partial series, recap or trailer: removing every clip
+                # before the error status lets the minute refund fire.
+                await self._discard_task_clips(task_id)
+            # An earlier attempt's parts stay, charged, and a retry finishes them.
+            # That isn't the "refunded, here's what to make instead" failure.
+            failure_message = (
+                KEPT_OUTPUTS_ERROR if is_workflow_error and prior_outputs else user_facing_error(e)
+            )
+            if is_workflow_error and prior_outputs:
+                is_workflow_error = False
+            if is_workflow_error:
+                try:
+                    await self.task_repo.merge_workflow_plan_error(
+                        self.db, task_id, e.code, e.details or {}
+                    )
+                except Exception:
+                    logger.exception("Could not record workflow error on task %s", task_id)
+            failed = await self.task_repo.update_task_status(
+                self.db, task_id, "error", progress=0, progress_message=failure_message,
+                expected_statuses=["queued", "processing"],
+            )
+            if failed is False:
+                raise
+            error_code = "task_error"
+            message = str(e).lower()
+            if is_workflow_error:
+                error_code = e.code
+            elif isinstance(e, YouTubeGeoRestrictedError):
+                error_code = "youtube_geo_restricted"
+            elif is_age_restricted_error(e):
+                error_code = "youtube_age_restricted"
+            elif "download" in message or "youtube" in message:
+                error_code = "download_error"
+            elif "analysis" in message:
+                error_code = "analysis_error"
+            elif "transcript" in message:
+                error_code = "transcription_error"
+            elif "cancelled" in message:
+                error_code = "cancelled"
+
+            await self.task_repo.update_task_runtime_metadata(
+                self.db,
+                task_id,
+                completed_at=datetime.utcnow(),
+                error_code=error_code,
+            )
+            capture_event(
+                "task_failed",
+                user_id,
+                {
+                    "task_id": task_id,
+                    "workflow": spec.workflow if spec is not None else None,
+                    "source_kind": source_kind(source_type, url),
+                    "error_code": error_code,
+                    "processing_seconds": elapsed_seconds(started_at),
+                    "cache_hit": cache_hit,
+                    "kept_outputs": prior_outputs,
+                },
+            )
+            if progress_callback:
+                try:
+                    await progress_callback(0, failure_message, "error")
+                except Exception:
+                    logger.exception("Could not publish task failure for %s", task_id)
+            raise
+        finally:
+            await run_in_thread(
+                self._cleanup_source_video, video_path, source_type, url,
+                **({"range_dir": range_dir} if range_dir else {}),
+            )
+            if source_type in {"twitch", "kick"}:
+                # Also handles failures before process_video_complete returns a
+                # path (and therefore before the generic path cleanup can run).
+                await run_in_thread(cleanup_stream_task, task_id)
+
+    async def _discard_task_clips(self, task_id: str) -> None:
+        """Delete every clip of a failed all-or-nothing task (refund precondition)."""
+        try:
+            async with self._processing_transaction(task_id):
+                await self.clip_repo.delete_clips_by_task(self.db, task_id)
+                await self.task_repo.update_task_clips(self.db, task_id, [])
+                # The discarded parts must render again on a retry.
+                await self.checkpoint_repo.forget_completed_positions(self.db, task_id)
+        except TaskCancelled:
+            # Cancelled meanwhile (or never started): finished parts stay, as on cancel.
+            logger.info("Task %s is no longer processing; keeping its clips", task_id)
+        except Exception:
+            # The task still has to reach "error"; without the delete it is not refunded.
+            logger.exception("Could not remove the clips of failed task %s", task_id)
+            await self.db.rollback()
+
+    async def _send_completion_notification_if_needed(
+        self,
+        *,
+        task_id: str,
+        clips_count: int,
+        workflow: str = "highlights",
+        topic: str = "",
+        source_path: Optional[Path] = None,
+        source_type: Optional[str] = None,
+        url: Optional[str] = None,
+        clip_previews: tuple[ClipPreview, ...] = (),
+    ) -> None:
+        context = await self.task_repo.get_task_notification_context(self.db, task_id)
+        if not context:
+            logger.warning("Task %s missing notification context; skipping email", task_id)
+            return
+
+        if not context.get("notify_on_completion"):
+            return
+
+        if context.get("completion_notification_sent_at"):
+            logger.info(
+                "Completion notification already sent for task %s; skipping", task_id
+            )
+            return
+
+        user_email = context.get("user_email")
+        if not user_email:
+            logger.warning(
+                "Task %s has notify_on_completion enabled but user email is missing",
+                task_id,
+            )
+            return
+
+        email_service = TaskCompletionEmailService(self.config)
+        if not email_service.is_configured:
+            logger.warning(
+                "Skipping completion notification for task %s because Amazon SES is not configured",
+                task_id,
+            )
+            return
+
+        # Local ffmpeg and one HTTP fetch, each bounded by source_preview's
+        # budget; images are a nice-to-have and never block the email.
+        source = await run_in_thread(
+            source_preview,
+            source_path=source_path,
+            youtube_video_id=extract_video_id(url) if source_type == "youtube" and url else None,
+        )
+        previews = TaskPreviews(source=source, clips=clip_previews)
+
+        try:
+            await email_service.send_task_completed_email(
+                recipient=TaskCompletionRecipient(
+                    email=user_email,
+                    name=context.get("user_name"),
+                    first_name=context.get("user_first_name"),
+                ),
+                task_id=task_id,
+                source_title=context.get("source_title"),
+                clips_count=clips_count,
+                workflow=workflow,
+                topic=topic,
+                previews=previews,
+            )
+            stamped = await self.task_repo.mark_completion_notification_sent(
+                self.db, task_id
+            )
+            if not stamped:
+                logger.info(
+                    "Completion notification stamp already existed for task %s",
+                    task_id,
+                )
+        except Exception:
+            logger.exception(
+                "Failed to send completion notification for task %s",
+                task_id,
+            )
+
+    async def _completion_email_wanted(self, task_id: str) -> bool:
+        """Whether a completion email will go out, so clip stills are worth taking."""
+        try:
+            context = await self.task_repo.get_task_notification_context(self.db, task_id)
+        except Exception:
+            logger.warning("Could not read notification settings for task %s", task_id, exc_info=True)
+            return False
+        return bool(
+            context
+            and context.get("notify_on_completion")
+            and not context.get("completion_notification_sent_at")
+            and context.get("user_email")
+            and TaskCompletionEmailService(self.config).is_configured
+        )
+
+    async def get_task_with_clips(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get task details with all clips."""
+        task = await self.task_repo.get_task_by_id(self.db, task_id)
+
+        if not task:
+            return None
+
+        if self._is_stale_queued_task(task) and await self._queued_job_is_missing(task):
+            timeout_seconds = self.config.queued_task_timeout_seconds
+            logger.warning(
+                f"Task {task_id} stuck in queued status for over {timeout_seconds}s; marking as error"
+            )
+            await self.task_repo.update_task_status(
+                self.db,
+                task_id,
+                "error",
+                progress=0,
+                progress_message=(
+                    "The queued job is no longer available. Please retry this generation."
+                ),
+                expected_statuses=["queued"],
+            )
+            task = await self.task_repo.get_task_by_id(self.db, task_id)
+            if not task:
+                return None
+
+        if self._is_stale_processing_task(task):
+            timeout_seconds = self.config.processing_task_timeout_seconds
+            logger.warning(
+                f"Task {task_id} stuck in processing status for over {timeout_seconds}s; marking as error"
+            )
+            await self.task_repo.update_task_status(
+                self.db,
+                task_id,
+                "error",
+                progress=0,
+                progress_message=(
+                    "Task stalled during processing (worker likely stopped or timed out). "
+                    "Check the worker logs (docker-compose logs -f worker) and try again."
+                ),
+                expected_statuses=["processing"],
+            )
+            task = await self.task_repo.get_task_by_id(self.db, task_id)
+            if not task:
+                return None
+
+        # Get clips
+        clips = await self.clip_repo.get_clips_by_task(self.db, task_id)
+        task["clips"] = [
+            {
+                **{key: value for key, value in clip.items() if key != "file_path"},
+                "caption_settings": await run_in_thread(
+                    MediaStorage().caption_settings,
+                    clip["file_path"],
+                ) if clip.get("file_path") else None,
+            }
+            for clip in clips
+        ]
+        task["clips_count"] = len(clips)
+        settings = await self._load_task_source_settings(task_id)
+        # The picked part (null for a whole video): clip times are on the source's
+        # timeline, so these only label the task and bound its links.
+        task.update(public_range_fields(settings))
+        settings.pop("source_range", None)
+        task.update(settings)
+
+        return task
+
+    async def get_user_tasks(
+        self, user_id: str, limit: int = 50, *, team_id: Optional[str] = None
+    ) -> list[Dict[str, Any]]:
+        """Get all tasks for a user or team workspace."""
+        return await self.task_repo.get_user_tasks(
+            self.db, user_id, limit, team_id=team_id
+        )
+
+    @serialized_task_edit
+    async def delete_task(self, task_id: str) -> None:
+        """Delete a task and all its associated clips."""
+        task = await self.task_repo.get_task_by_id(self.db, task_id)
+        source_url = task.get("source_url") if task else None
+        if source_url and source_url.startswith("upload://"):
+            if source_url.startswith("upload://s3/"):
+                path = MediaStorage().source_reference(source_url)
+            else:
+                path = str(self.video_service.resolve_local_video_path(source_url))
+            await queue_delete(self.db, path)
+        elif source_url and MediaStorage().enabled:
+            video_id = extract_video_id(source_url)
+            if video_id:
+                await queue_delete(self.db, MediaStorage().youtube_metadata_reference(video_id))
+        # Delete all clips for this task
+        await self.clip_repo.delete_clips_by_task(self.db, task_id)
+
+        # Delete the task
+        await self.task_repo.delete_task(self.db, task_id)
+
+        logger.info(f"Deleted task {task_id} and all associated clips")
+
+
+    async def get_performance_metrics(self) -> Dict[str, Any]:
+        """Return aggregate processing performance metrics."""
+        return await self.task_repo.get_performance_metrics(self.db)
